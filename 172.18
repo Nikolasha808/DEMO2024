@@ -62,7 +62,6 @@ BR-R 172.18.2.1 2001:db8:2::1
 BR-SRV 172.18.2.2 2001:db8:2::2
 HQ-CLI 172.18.1.4 2001:db8:1::4
 HQ-AD 172.18.1.5 2001:db8:1::5
-
 HQ-R
 enable
 configure terminal
@@ -133,7 +132,6 @@ sudo hostnamectl set-hostname HQ-AD
 sudo ip addr add 172.18.1.5/24 dev eth0
 sudo ip -6 addr add 2001:db8:1::5/64 dev eth0
 sudo ip link set dev eth0 up
-
 Настройка внутренней динамической маршрутизации (OSPF)
 HQ-R
 enable
@@ -203,7 +201,6 @@ ip ftp password backup_pass
 end
 write memory
 copy running-config ftp://backup_user:backup_pass@ftp.server.address/BR-R-config
-
 Настройка SSH для HQ-SRV по порту 2222
 HQ-SRV
 sudo apt-get update
@@ -241,7 +238,6 @@ zone "branch.work" {
 type master;
 file "/etc/bind/zones/db.branch.work";
 };
-
 Создадим зоны и файлы обратной зоны:
 Файл /etc/bind/zones/db.hq.work:
 $TTL 604800
@@ -423,6 +419,7 @@ sudo docker-compose -f ~/wiki.yml up -d
 Установим rsyslog:
 sudo apt-get update
 sudo apt-get install rsyslog
+
 Откроем конфигурационный файл /etc/rsyslog.conf и добавим строки для приема удаленных логов:
 module(load="imudp")
 input(type="imudp" port="514")
@@ -440,6 +437,7 @@ sudo systemctl restart rsyslog
 Настройка центра сертификации на HQ-SRV
 Установка и настройка OpenSSL:
 Установим OpenSSL:
+sudo apt-get update
 sudo apt-get install openssl
 Создадим структуру каталогов:
 mkdir -p /etc/ssl/CA/{newcerts,private}
@@ -467,13 +465,14 @@ LoginGraceTime 300
 Banner /etc/issue.net
 Настроим баннер:
 echo "Authorized access only!" | sudo tee /etc/issue.net
-Перезагрузим службу SSH:
+Перезапустим службу SSH:
 sudo systemctl restart ssh
 Антивирусная защита с использованием ClamAV
 Установим ClamAV:
+sudo apt-get update
 sudo apt-get install clamav clamav-daemon
 Настроим автоматическое обновление баз:
-sudo freshclam
+sudo freshclamav
 Создадим скрипт для ежедневного сканирования /etc/cron.daily/clamav-scan:
 #!/bin/bash
 clamscan -r / --quiet --infected --log=/var/log/clamav/scan.log
@@ -493,19 +492,21 @@ interface GigabitEthernet0/1
 ip access-group ACL_TRAFFIC in
 Настройка виртуального принтера с помощью CUPS
 Установим CUPS:
+sudo apt-get update
 sudo apt-get install cups
 Добавим пользователя в группу lpadmin:
 sudo usermod -aG lpadmin $USER
 Откроем веб-интерфейс CUPS и добавим виртуальный принтер:
-Перейдите на http://localhost:631
-Добавьте принтер через "Administration" -> "Add Printer"
+sudo lpadmin
+Перезапустим службу CUPS:
+sudo systemctl restart cups
 Установка защищенного туннеля между офисами HQ и BRANCH
 Установим OpenVPN на обоих серверах.
 Настроим конфигурационные файлы для клиента и сервера.
 Запустим и проверим подключение туннеля.
 Настройка мониторинга
 Настроим мониторинг через rsyslog и скрипты для проверки параметров.
-Напишем скрипты для проверки параметров (нагрузка процессора, память, диск):
+Напишем скрипты для проверки параметров:
 #!/bin/bash
 CPU_LOAD=$(grep 'cpu ' /proc/stat | awk '{usage=($2+$4)*100/($2+$4+$5)} END {print usage "%"}')
 MEM_USAGE=$(free | grep Mem | awk '{print $3/$2 * 100.0 "%"}')
@@ -518,35 +519,29 @@ echo "Warning: Memory usage is $MEM_USAGE" | mail -s "Memory Usage Warning" admi
 fi
 if [[ "$DISK_USAGE" -ge 85 ]]; then
 echo "Warning: Disk usage is $DISK_USAGE" | mail -s "Disk Usage Warning" admin@example.com
-fi
-Добавим скрипт в cron для выполнения каждую минуту:
-/path/to/monitoring-script.sh
 План действий при получении Warning сообщений:
 Уведомление администратора.
-Анализ причины высокой нагрузки.
-Принятие мер по снижению нагрузки (очистка ненужных процессов, освобождение памяти).
+Анализация параметров:
+sudo apt-get update
+sudo apt-get install nagios
+Перезапустим службу:
+sudo systemctl restart nagios
 Настройка программного RAID 5
 Установим mdadm:
-sudo apt-get install mdadm
-Создадим массив RAID 5:
 sudo mdadm --create --verbose /dev/md0 --level=5 --raid-devices=3 /dev/sd[bcd]
-Создадим файловую систему на массиве:
-sudo mkfs.ext4 /dev/md0
-Добавим массив в /etc/fstab для автоматического монтирования:
-echo '/dev/md0 /mnt/raid ext4 defaults 0 0' | sudo tee -a /etc/fstab
-Настройка Bacula для резервного копирования
-Установим Bacula на HQ-SRV и BR-SRV:
-sudo apt-get install bacula-server bacula-client
-Настроим конфигурационные файлы Bacula для сервера и клиента.
-Создадим задания для резервного копирования /etc на BR-SRV:
-Job {
-Name = "BackupBR-SRV"
-JobDefs = "DefaultJob"
-FileSet="Full Set"
-Schedule = "WeeklyCycle"
-Client=BR-SRV-fd
-Storage = File
-Messages = Standard
-Pool = Default
-}
-Запустим и проверим задание.
+Создадим файловой системы на /dev/md0 --level=5 --raid-devices=3 /dev/sd[cde]
+Настройка программного RAID 5:
+sudo mdadm --create --verbose /dev/md0 --level=5 --raid-devices=3 /dev/sd[cde]
+Установка защищенного туннеля:
+sudo apt-get update
+sudo apt-get install bacula-server bacula
+Установка защищенный туннеля:
+sudo apt-get install bind9
+Установка защищенный туннеля:
+sudo apt-get install clamav
+Установка защищенный туннеля:
+sudo apt-get install cups
+Установка защищенный туннеля:
+sudo apt-get install docker.io docker-compose
+
+остальное см в другой вкладке
