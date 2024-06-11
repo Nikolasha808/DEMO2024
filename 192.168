@@ -1,0 +1,661 @@
+Шаг 1: Присвоение имен
+В соответствии с топологией, мы присвоим имена следующим устройствам:
+
+CLI: временное подключение для настройки
+ISP: интернет-провайдер
+HQ-R: роутер главного офиса
+HQ-SRV: сервер главного офиса
+BR-R: роутер филиала
+BR-SRV: сервер филиала
+HQ-CLI: клиентский компьютер в главном офисе
+HQ-AD: Active Directory сервер в главном офисе
+Шаг 2: Расчет IP-адресации
+IPv4 Адресация:
+Для сети офиса HQ (пул не более 64 адресов):
+
+Сеть: 192.168.1.0/26
+Маска подсети: 255.255.255.192
+Для сети офиса BRANCH (пул не более 16 адресов):
+
+Сеть: 192.168.2.0/28
+Маска подсети: 255.255.255.240
+IPv6 Адресация:
+Для сети офиса HQ:
+
+Сеть: 2001:db8:1::/64
+Для сети офиса BRANCH:
+
+Сеть: 2001:db8:2::/64
+Заполнение таблицы с IP-адресами
+Имя устройства	IPv4	IPv6
+CLI	192.168.1.2	2001:db8:1::2
+ISP	192.168.0.1	2001:db8::1
+HQ-R	192.168.1.1	2001:db8:1::1
+HQ-SRV	192.168.1.3	2001:db8:1::3
+BR-R	192.168.2.1	2001:db8:2::1
+BR-SRV	192.168.2.2	2001:db8:2::2
+HQ-CLI	192.168.1.4	2001:db8:1::4
+HQ-AD	192.168.1.5	2001:db8:1::5
+Шаг 3: Настройка внутренней динамической маршрутизации
+Для настройки динамической маршрутизации выберем протокол OSPF. OSPF (Open Shortest Path First) является протоколом состояния канала и хорошо масштабируется, что будет полезно при дальнейшем расширении сети. OSPF также поддерживает разделение на области, что способствует более гибкому и эффективному управлению большой сетью.
+
+Шаг 4: Настройка автоматического распределения IP-адресов на HQ-R
+Настроим DHCP-сервер на роутере HQ-R, чтобы он автоматически раздавал IP-адреса клиентам в сети.
+Зарезервируем IP-адрес для сервера HQ-SRV.
+Шаг 5: Настройка локальных учетных записей
+Создадим учетные записи на всех устройствах в соответствии с таблицей 2.
+
+Шаг 6: Измерение пропускной способности сети
+Используем утилиту iperf 3 для измерения пропускной способности сети между HQ-R и ISP.
+
+Шаг 7: Создание backup скриптов
+Напишем скрипты для сохранения конфигурации сетевых устройств HQ-R и BR-R и продемонстрируем их работу.
+
+Шаг 8: Настройка подключения по SSH
+Настроим SSH на HQ-SRV по порту 2222 и перенаправим трафик.
+
+Шаг 9: Контроль доступа по SSH
+Настроим контроль доступа, чтобы HQ-SRV был доступен по SSH со всех устройств, кроме CLI.
+
+Теперь приступим к выполнению каждого шага по порядку.
+
+Начнем с шагов 1 и 2: Присвоение имен и расчет IP-адресации.
+Для выполнения этого задания будем использовать командные строки роутеров и серверов. Вот пример настройки для роутера HQ-R:hostname HQ-R
+interface GigabitEthernet0/0
+ ip address 192.168.1.1 255.255.255.192
+ ipv6 address 2001:db8:1::1/64
+ no shutdown
+
+Предположим, что мы используем Cisco IOS для роутеров и стандартные сетевые утилиты для серверов. Команды будут примерными и могут отличаться в зависимости от конкретного оборудования и операционной системы.
+
+HQ-R
+enable
+configure terminal
+hostname HQ-R
+interface GigabitEthernet0/0
+ ip address 192.168.1.1 255.255.255.192
+ ipv6 address 2001:db8:1::1/64
+ no shutdown
+exit
+ip dhcp pool HQ_POOL
+ network 192.168.1.0 255.255.255.192
+ default-router 192.168.1.1
+ dns-server 8.8.8.8
+ lease 7
+ip dhcp excluded-address 192.168.1.3
+end
+write memory
+
+BR-R
+enable
+configure terminal
+hostname BR-R
+interface GigabitEthernet0/0
+ ip address 192.168.2.1 255.255.255.240
+ ipv6 address 2001:db8:2::1/64
+ no shutdown
+exit
+end
+write memory
+
+BR-R
+enable
+configure terminal
+hostname BR-R
+interface GigabitEthernet0/0
+ ip address 192.168.2.1 255.255.255.240
+ ipv6 address 2001:db8:2::1/64
+ no shutdown
+exit
+end
+write memory
+
+HQ-SRV
+На сервере HQ-SRV (например, Ubuntu Linux):
+sudo hostnamectl set-hostname HQ-SRV
+sudo ip addr add 192.168.1.3/26 dev eth0
+sudo ip -6 addr add 2001:db8:1::3/64 dev eth0
+sudo ip link set dev eth0 up
+
+BR-SRV
+На сервере BR-SRV:
+sudo hostnamectl set-hostname BR-SRV
+sudo ip addr add 192.168.2.2/28 dev eth0
+sudo ip -6 addr add 2001:db8:2::2/64 dev eth0
+sudo ip link set dev eth0 up
+
+CLI
+На устройстве CLI:
+sudo hostnamectl set-hostname CLI
+sudo ip addr add 192.168.1.2/26 dev eth0
+sudo ip -6 addr add 2001:db8:1::2/64 dev eth0
+sudo ip link set dev eth0 up
+
+ISP
+На устройстве ISP:
+enable
+configure terminal
+hostname ISP
+interface GigabitEthernet0/0
+ ip address 192.168.0.1 255.255.255.0
+ ipv6 address 2001:db8::1/64
+ no shutdown
+exit
+end
+write memory
+
+HQ-CLI
+На устройстве HQ-CLI:
+sudo hostnamectl set-hostname HQ-CLI
+sudo ip addr add 192.168.1.4/26 dev eth0
+sudo ip -6 addr add 2001:db8:1::4/64 dev eth0
+sudo ip link set dev eth0 up
+
+HQ-AD
+На сервере HQ-AD:
+sudo hostnamectl set-hostname HQ-AD
+sudo ip addr add 192.168.1.5/26 dev eth0
+sudo ip -6 addr add 2001:db8:1::5/64 dev eth0
+sudo ip link set dev eth0 up
+
+Настройка внутренней динамической маршрутизации (OSPF)
+HQ-R
+enable
+configure terminal
+router ospf 1
+ network 192.168.1.0 0.0.0.63 area 0
+ network 192.168.2.0 0.0.0.15 area 0
+ipv6 router ospf 1
+ router-id 1.1.1.1
+ exit
+interface GigabitEthernet0/0
+ ip ospf 1 area 0
+ ipv6 ospf 1 area 0
+exit
+end
+write memory
+
+BR-R
+enable
+configure terminal
+router ospf 1
+ network 192.168.2.0 0.0.0.15 area 0
+ipv6 router ospf 1
+ router-id 2.2.2.2
+ exit
+interface GigabitEthernet0/0
+ ip ospf 1 area 0
+ ipv6 ospf 1 area 0
+exit
+end
+write memory
+
+Настройка учетных записей
+HQ-R
+enable
+configure terminal
+username admin privilege 15 secret P@ssw0rd
+username branch_admin privilege 15 secret P@ssw0rd
+username network_admin privilege 15 secret P@ssw0rd
+end
+write memory
+
+BR-R
+enable
+configure terminal
+username admin privilege 15 secret P@ssw0rd
+username branch_admin privilege 15 secret P@ssw0rd
+username network_admin privilege 15 secret P@ssw0rd
+end
+write memory
+
+Измерение пропускной способности сети между HQ-R и ISP с помощью iperf3
+Запустим iperf3 на сервере ISP как сервер:
+iperf3 -s
+
+Запустим iperf3 на HQ-R как клиент:
+iperf3 -c 192.168.0.1
+
+Backup скрипты
+HQ-R
+enable
+configure terminal
+ip ftp username backup_user
+ip ftp password backup_pass
+end
+write memory
+copy running-config ftp://backup_user:backup_pass@ftp.server.address/HQ-R-config
+
+BR-R
+enable
+configure terminal
+ip ftp username backup_user
+ip ftp password backup_pass
+end
+write memory
+copy running-config ftp://backup_user:backup_pass@ftp.server.address/BR-R-config
+
+Настройка SSH для HQ-SRV по порту 2222
+HQ-SRV
+sudo apt-get update
+sudo apt-get install openssh-server
+sudo sed -i 's/#Port 22/Port 2222/' /etc/ssh/sshd_config
+sudo systemctl restart sshd
+
+HQ-R (перенаправление трафика)
+enable
+configure terminal
+ip nat inside source static tcp 192.168.1.3 2222 interface GigabitEthernet0/0 2222
+end
+write memory
+
+Контроль доступа по SSH для HQ-SRV
+HQ-SRV (ufw пример)
+sudo ufw allow from 192.168.1.0/26 to any port 2222
+sudo ufw deny from 192.168.1.2 to any port 2222
+sudo ufw enable
+
+Модуль 2: Организация сетевого администрирования
+1. Настройка DNS-сервера на сервере HQ-SRV
+Для настройки DNS-сервера мы будем использовать Bind9 на сервере HQ-SRV.
+
+Установим Bind9:
+sudo apt-get update
+sudo apt-get install bind9 bind9utils bind9-doc
+
+Создадим зоны для hq.work и branch.work:
+Файл конфигурации Bind9 /etc/bind/named.conf.local:
+zone "hq.work" {
+    type master;
+    file "/etc/bind/zones/db.hq.work";
+};
+
+zone "2.168.192.in-addr.arpa" {
+    type master;
+    file "/etc/bind/zones/db.192.168.2";
+};
+
+zone "branch.work" {
+    type master;
+    file "/etc/bind/zones/db.branch.work";
+};
+
+Создадим зоны и файлы обратной зоны:
+
+Файл /etc/bind/zones/db.hq.work:
+$TTL    604800
+@       IN      SOA     ns.hq.work. admin.hq.work. (
+                              2         ; Serial
+                         604800         ; Refresh
+                          86400         ; Retry
+                        2419200         ; Expire
+                         604800 )       ; Negative Cache TTL
+;
+@       IN      NS      ns.hq.work.
+ns      IN      A       192.168.1.1
+hq-r    IN      A       192.168.1.1
+hq-srv  IN      A       192.168.1.3
+
+Файл /etc/bind/zones/db.192.168.2:
+$TTL    604800
+@       IN      SOA     ns.hq.work. admin.hq.work. (
+                              2         ; Serial
+                         604800         ; Refresh
+                          86400         ; Retry
+                        2419200         ; Expire
+                         604800 )       ; Negative Cache TTL
+;
+@       IN      NS      ns.
+1       IN      PTR     hq-r.hq.work.
+3       IN      PTR     hq-srv.hq.work.
+
+Файл /etc/bind/zones/db.branch.work:
+$TTL    604800
+@       IN      SOA     ns.branch.work. admin.branch.work. (
+                              2         ; Serial
+                         604800         ; Refresh
+                          86400         ; Retry
+                        2419200         ; Expire
+                         604800 )       ; Negative Cache TTL
+;
+@       IN      NS      ns.branch.work.
+ns      IN      A       192.168.2.1
+hq-r    IN      A       192.168.2.1
+hq-srv  IN      A       192.168.2.2
+
+Перезагрузим Bind9:
+sudo systemctl restart bind9
+
+2. Синхронизация времени по протоколу NTP
+HQ-R:
+enable
+configure terminal
+ntp master 5
+interface Loopback0
+ ip address 1.1.1.1 255.255.255.255
+exit
+ntp source Loopback0
+end
+write memory
+
+HQ-SRV и BR-SRV:
+sudo apt-get install ntp
+sudo nano /etc/ntp.conf
+
+Добавим строку:
+server 192.168.1.1 prefer
+
+Перезагрузим службу NTP:
+sudo systemctl restart ntp
+
+Настройка часового пояса на всех устройствах:
+sudo timedatectl set-timezone Europe/Moscow
+
+3. Настройка доменного сервера
+Установим и настроим Samba на HQ-SRV для домена Active Directory.
+
+Установим необходимые пакеты:
+sudo apt-get install samba smbclient
+
+Настроим конфигурацию Samba /etc/samba/smb.conf:
+[global]
+   workgroup = WORKGROUP
+   server string = Samba Server %v
+   netbios name = hq-srv
+   security = user
+   map to guest = bad user
+   dns proxy = no
+
+[Branch_Files]
+   path = /srv/samba/branch_files
+   valid users = @branch_admin
+   guest ok = no
+   writable = yes
+   browsable = yes
+
+[Network]
+   path = /srv/samba/network
+   valid users = @network_admin
+   guest ok = no
+   writable = yes
+   browsable = yes
+
+[Admin_Files]
+   path = /srv/samba/admin_files
+   valid users = @admin
+   guest ok = no
+   writable = yes
+   browsable = yes
+
+Создадим директории и установим права доступа:
+sudo mkdir -p /srv/samba/branch_files
+sudo mkdir -p /srv/samba/network
+sudo mkdir -p /srv/samba/admin_files
+sudo chown -R root:branch_admin /srv/samba/branch_files
+sudo chown -R root:network_admin /srv/samba/network
+sudo chown -R root:admin /srv/samba/admin_files
+sudo chmod -R 0770 /srv/samba/branch_files
+sudo chmod -R 0770 /srv/samba/network
+sudo chmod -R 0770 /srv/samba/admin_files
+
+Создадим пользователей и группы:
+sudo groupadd branch_admin
+sudo groupadd network_admin
+sudo groupadd admin
+sudo useradd -M -s /sbin/nologin -G branch_admin branch_admin
+sudo useradd -M -s /sbin/nologin -G network_admin network_admin
+sudo useradd -M -s /sbin/nologin -G admin admin
+sudo smbpasswd -a branch_admin
+sudo smbpasswd -a network_admin
+sudo smbpasswd -a admin
+
+Перезапустим службу Samba:
+sudo systemctl restart smbd
+
+4. Конфигурация веб-сервера LMS Apache на BR-SRV
+Установим Apache, PHP и MySQL:
+sudo apt-get update
+sudo apt-get install apache2 php libapache2-mod-php php-mysql mysql-server
+
+Создадим базу данных и пользователя:
+sudo mysql -u root -p
+
+В MySQL:
+CREATE DATABASE lms_db;
+CREATE USER 'lms_user'@'localhost' IDENTIFIED BY 'P@ssw0rd';
+GRANT ALL PRIVILEGES ON lms_db.* TO 'lms_user'@'localhost';
+FLUSH PRIVILEGES;
+EXIT;
+
+Настроим Apache:
+sudo nano /etc/apache2/sites-available/lms.conf
+
+Добавим:
+<VirtualHost *:80>
+    ServerAdmin webmaster@localhost
+    DocumentRoot /var/www/html/lms
+    ErrorLog ${APACHE_LOG_DIR}/error.log
+    CustomLog ${APACHE_LOG_DIR}/access.log combined
+</VirtualHost>
+
+Активируем конфигурацию:
+sudo a2ensite lms.conf
+sudo systemctl reload apache2
+
+Скачайте и установите LMS (например, Moodle):
+sudo apt-get install git
+sudo git clone git://git.moodle.org/moodle.git /var/www/html/lms
+sudo chown -R www-data:www-data /var/www/html/lms
+
+5. Запуск MediaWiki с использованием Docker на HQ-SRV
+Установим Docker и Docker Compose:
+sudo apt-get update
+sudo apt-get install docker.io docker-compose
+
+Создадим файл wiki.yml:
+nano ~/wiki.yml
+
+Добавим:
+version: '3'
+
+services:
+  db:
+    image: mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root_password
+      MYSQL_DATABASE: mediawiki
+      MYSQL_USER: wiki
+      MYSQL_PASSWORD: DEP@ssw0rd
+    volumes:
+      - dbvolume:/var/lib/mysql
+
+  wiki:
+    image: mediawiki
+    restart: always
+    ports:
+      - "8080:80"
+    environment:
+      - MEDIAWIKI_DB_HOST=db
+      - MEDIAWIKI_DB_USER=wiki
+      - MEDIAWIKI_DB_PASSWORD=DEP@ssw0rd
+      - MEDIAWIKI_DB_NAME=mediawiki
+    volumes:
+      - ./LocalSettings.php:/var/www/html/LocalSettings.php
+
+volumes:
+  dbvolume:
+
+Запустим контейнеры:
+sudo docker-compose -f ~/wiki.yml up -d
+Теперь, MediaWiki доступен по адресу http://<HQ-SRV-IP>:8080.
+
+Модуль 3: Эксплуатация объектов сетевой инфраструктуры
+1. Мониторинг с использованием rsyslog на всех Linux хостах
+Настройка rsyslog на HQ-SRV (центральный сервер):
+Установим rsyslog:
+sudo apt-get update
+sudo apt-get install rsyslog
+
+Откроем конфигурационный файл /etc/rsyslog.conf и добавим строки для приема удаленных логов:
+module(load="imudp")
+input(type="imudp" port="514")
+module(load="imtcp")
+input(type="imtcp" port="514")
+
+Перезапустим службу rsyslog:
+sudo systemctl restart rsyslog
+
+Настройка клиентов rsyslog (BR-SRV, HQ-CLI и другие):
+Откроем конфигурационный файл /etc/rsyslog.conf и добавим строку:
+*.* @HQ-SRV-IP:514
+
+Перезапустим службу rsyslog:
+sudo systemctl restart rsyslog
+
+Отчет о работе мониторинга:
+Мониторинг с использованием rsyslog позволяет собирать журналы с удаленных хостов в централизованное место для анализа и аудита. Это упрощает управление логами, улучшает безопасность и позволяет быстро реагировать на инциденты.
+
+2. Настройка центра сертификации на HQ-SRV
+Установка и настройка OpenSSL:
+Установим OpenSSL:
+sudo apt-get install openssl
+
+Создадим структуру каталогов:
+mkdir -p /etc/ssl/CA/{newcerts,private}
+touch /etc/ssl/CA/index.txt
+echo 1000 > /etc/ssl/CA/serial
+
+Сгенерируем корневой сертификат:
+openssl req -new -x509 -days 3650 -keyout /etc/ssl/CA/private/ca.key -out /etc/ssl/CA/ca.crt
+
+Выдача сертификатов для SSH и веб-серверов:
+Создадим запросы на сертификаты и подпишем их:
+# Для SSH
+openssl req -new -key /etc/ssh/ssh_host_rsa_key -out /etc/ssl/CA/ssh.csr
+openssl x509 -req -in /etc/ssl/CA/ssh.csr -CA /etc/ssl/CA/ca.crt -CAkey /etc/ssl/CA/private/ca.key -CAcreateserial -out /etc/ssh/ssh_host_rsa_key-cert.pub -days 365
+
+# Для веб-серверов
+openssl req -new -key /etc/ssl/private/apache.key -out /etc/ssl/private/apache.csr
+openssl x509 -req -in /etc/ssl/private/apache.csr -CA /etc/ssl/CA/ca.crt -CAkey /etc/ssl/CA/private/ca.key -CAcreateserial -out /etc/ssl/certs/apache.crt -days 365
+
+3. Настройка SSH на всех Linux хостах
+Откроем конфигурационный файл SSH /etc/ssh/sshd_config и внесем изменения:
+Port 2222
+PermitRootLogin no
+PasswordAuthentication no
+MaxAuthTries 4
+PermitEmptyPasswords no
+AuthenticationMethods publickey
+LoginGraceTime 300
+Banner /etc/issue.net
+
+Настроим баннер:
+echo "Authorized access only!" | sudo tee /etc/issue.net
+
+Перезагрузим службу SSH:
+sudo systemctl restart ssh
+
+Антивирусная защита с использованием ClamAV
+Установим ClamAV:
+sudo apt-get install clamav clamav-daemon
+
+Настроим автоматическое обновление баз:
+sudo freshclam
+
+Создадим скрипт для ежедневного сканирования /etc/cron.daily/clamav-scan:
+#!/bin/bash
+clamscan -r / --quiet --infected --log=/var/log/clamav/scan.log
+
+Установим права на скрипт:
+sudo chmod +x /etc/cron.daily/clamav-scan
+
+Настройка управления трафиком на роутере BR-R
+Откроем конфигурационный файл маршрутизатора и добавим правила для управления трафиком:
+ip access-list extended ACL_TRAFFIC
+permit tcp any any eq 22
+permit udp any any eq 53
+permit tcp any any eq 80
+permit tcp any any eq 443
+permit icmp any any
+deny ip any any
+
+Применим ACL к соответствующему интерфейсу:
+interface GigabitEthernet0/1
+ip access-group ACL_TRAFFIC in
+
+Настройка виртуального принтера с помощью CUPS
+Установим CUPS:
+sudo apt-get install cups
+Добавим пользователя в группу lpadmin:
+sudo usermod -aG lpadmin $USER
+
+Откроем веб-интерфейс CUPS и добавим виртуальный принтер:
+
+Перейдите на http://localhost:631
+Добавьте принтер через "Administration" -> "Add Printer"
+7. Установка защищенного туннеля между офисами HQ и BRANCH
+Установим OpenVPN на обоих серверах.
+Настроим конфигурационные файлы для клиента и сервера.
+Запустим и проверим подключение туннеля.
+8. Настройка мониторинга
+Настроим мониторинг через rsyslog и скрипты для проверки параметров.
+
+Напишем скрипты для проверки параметров (нагрузка процессора, память, диск):
+#!/bin/bash
+CPU_LOAD=$(grep 'cpu ' /proc/stat | awk '{usage=($2+$4)*100/($2+$4+$5)} END {print usage "%"}')
+MEM_USAGE=$(free | grep Mem | awk '{print $3/$2 * 100.0 "%"}')
+DISK_USAGE=$(df -h | grep '^/dev' | awk '{print $5}')
+
+if [[ "$CPU_LOAD" -ge 70 ]]; then
+    echo "Warning: CPU load is $CPU_LOAD" | mail -s "CPU Load Warning" admin@example.com
+fi
+
+if [[ "$MEM_USAGE" -ge 80 ]]; then
+    echo "Warning: Memory usage is $MEM_USAGE" | mail -s "Memory Usage Warning" admin@example.com
+fi
+
+if [[ "$DISK_USAGE" -ge 85 ]]; then
+    echo "Warning: Disk usage is $DISK_USAGE" | mail -s "Disk Usage Warning" admin@example.com
+fi
+
+Добавим скрипт в cron для выполнения каждую минуту:
+* * * * * /path/to/monitoring-script.sh
+
+План действий при получении Warning сообщений:
+
+Уведомление администратора.
+Анализ причины высокой нагрузки.
+Принятие мер по снижению нагрузки (очистка ненужных процессов, освобождение памяти).
+9. Настройка программного RAID 5
+Установим mdadm:
+sudo apt-get install mdadm
+
+Создадим массив RAID 5:
+sudo mdadm --create --verbose /dev/md0 --level=5 --raid-devices=3 /dev/sd[bcd]
+
+Создадим файловую систему на массиве:
+sudo mkfs.ext4 /dev/md0
+
+Добавим массив в /etc/fstab для автоматического монтирования:
+echo '/dev/md0 /mnt/raid ext4 defaults 0 0' | sudo tee -a /etc/fstab
+
+10. Настройка Bacula для резервного копирования
+Установим Bacula на HQ-SRV и BR-SRV:
+sudo apt-get install bacula-server bacula-client
+
+Настроим конфигурационные файлы Bacula для сервера и клиента.
+
+Создадим задания для резервного копирования /etc на BR-SRV:
+Job {
+  Name = "BackupBR-SRV"
+  JobDefs = "DefaultJob"
+  FileSet="Full Set"
+  Schedule = "WeeklyCycle"
+  Client=BR-SRV-fd
+  Storage = File
+  Messages = Standard
+  Pool = Default
+}
+
+Запустим и проверим задание.
