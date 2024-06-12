@@ -1,36 +1,6 @@
-Топология сети
-На представленной схеме мы видим следующее:
-Интернет подключен через провайдера (ISP) к двум роутерам: HQ-R и BR-R.
-HQ (главный офис) имеет сервер HQ-SRV, который подключен к роутеру HQ-R.
-BRANCH (филиал) имеет сервер BR-SRV, который подключен к роутеру BR-R.
-Временное подключение через CLI используется для настройки.
-Модуль 1: Выполнение работ по проектированию сетевой инфраструктуры
-Модуль А: Базовая настройка устройств
-Присвоение имен:
-HQ-R, BR-R для роутеров
-HQ-SRV, BR-SRV для серверов
-Расчет IP-адресации:
-Определить IP-адреса для всех устройств в сети.
-Настройка внутренней динамической маршрутизации:
-Настроить протокол динамической маршрутизации (например, OSPF или RIP) для связи между роутерами.
-Модуль Б: Настройка серверов и сервисов
-Настройка DNS-сервера:
-Развернуть и настроить DNS-сервер для разрешения имен в сети.
-Синхронизация времени:
-Настроить NTP-сервер и синхронизировать время между устройствами.
-Реализация файлового сервера (SMB/NFS):
-Настроить файловый сервер для общего доступа к файлам.
-Мониторинг и центр сертификации:
-Настроить системы мониторинга (например, Zabbix, Nagios) и центр сертификации для управления сертификатами.
-Модуль В: Обеспечение безопасности и управление трафиком
-Настройка защищенного туннеля между офисами:
-Настроить VPN для защищенной связи между HQ и BRANCH.
-Управление трафиком:
-Настроить правила QoS для управления трафиком.
-Конфигурирование веб-сервера:
-Развернуть и настроить веб-сервер для предоставления веб-приложений.
-Шаг 1: Присвоение имен
-В соответствии с топологией, мы присвоим имена следующим устройствам:
+Шаг 1: Присвоение имен устройствам
+Присвоим имена следующим устройствам:
+
 CLI: временное подключение для настройки
 ISP: интернет-провайдер
 HQ-R: роутер главного офиса
@@ -38,132 +8,323 @@ HQ-SRV: сервер главного офиса
 BR-R: роутер филиала
 BR-SRV: сервер филиала
 HQ-CLI: клиентский компьютер в главном офисе
-HQ-AD: Active Directory сервер в главном офисе
+HQ-AD: сервер Active Directory в главном офисе
 Шаг 2: Расчет IP-адресации
 IPv4 Адресация:
+
 Для сети офиса HQ (пул не более 64 адресов):
-Сеть: 172.18.1.0/24
-Маска подсети: 255.255.0.0
+Сеть: 172.18.0.0/26
+Маска подсети: 255.255.255.192
 Для сети офиса BRANCH (пул не более 16 адресов):
-Сеть: 172.18.2.0/28
-Маска подсети: 255.255.0.0
-IPv6 Адресация:
-Для сети офиса HQ:
-Сеть: 2001:db8:1::/64
-Для сети офиса BRANCH:
-Сеть: 2001:db8:2::/64
+Сеть: 172.18.1.0/28
+Маска подсети: 255.255.255.240
 Заполнение таблицы с IP-адресами
-Имя устройства IPv4 IPv6
-CLI 172.18.1.2 2001:db8:1::2
-ISP 172.18.0.1 2001:db8::1
-HQ-R 172.18.1.1 2001:db8:1::1
-HQ-SRV 172.18.1.3 2001:db8:1::3
-BR-R 172.18.2.1 2001:db8:2::1
-BR-SRV 172.18.2.2 2001:db8:2::2
-HQ-CLI 172.18.1.4 2001:db8:1::4
-HQ-AD 172.18.1.5 2001:db8:1::5
+Имя устройства	IPv4
+CLI	172.18.0.2
+ISP	172.18.255.254
+HQ-R	172.18.0.1
+HQ-SRV	172.18.0.3
+BR-R	172.18.1.1
+BR-SRV	172.18.1.2
+HQ-CLI	172.18.0.4
+HQ-AD	172.18.0.5
+Шаг 3: Настройка внутренней динамической маршрутизации (OSPF)
 HQ-R
+plaintext
+Копировать код
 enable
 configure terminal
 hostname HQ-R
 interface GigabitEthernet0/0
-ip address 172.18.1.1 255.255.0.0
-ipv6 address 2001:db8:1::1/64
-no shutdown
+ ip address 172.18.0.1 255.255.255.192
+ no shutdown
 exit
-ip dhcp pool HQ_POOL
-network 172.18.1.0 255.255.0.0
-default-router 172.18.1.1
-dns-server 8.8.8.8
-lease 7
-ip dhcp excluded-address 172.18.1.3
+router ospf 1
+ network 172.18.0.0 0.0.0.63 area 0
+ network 172.18.1.0 0.0.0.15 area 0
+exit
 end
 write memory
 BR-R
+plaintext
+Копировать код
 enable
 configure terminal
 hostname BR-R
 interface GigabitEthernet0/0
-ip address 172.18.2.1 255.255.0.0
-ipv6 address 2001:db8:2::1/64
-no shutdown
+ ip address 172.18.1.1 255.255.255.240
+ no shutdown
+exit
+router ospf 1
+ network 172.18.1.0 0.0.0.15 area 0
 exit
 end
 write memory
-HQ-SRV
-На сервере HQ-SRV (например, Ubuntu Linux):
+Шаг 4: Настройка автоматического распределения IP-адресов на HQ-R
+plaintext
+Копировать код
+enable
+configure terminal
+ip dhcp pool HQ_POOL
+ network 172.18.0.0 255.255.255.192
+ default-router 172.18.0.1
+ dns-server 8.8.8.8
+ lease 7
+ip dhcp excluded-address 172.18.0.3
+end
+write memory
+Шаг 5: Настройка локальных учетных записей
+plaintext
+Копировать код
+HQ-R:
+enable
+configure terminal
+username admin privilege 15 secret P@ssw0rd
+username branch_admin privilege 15 secret P@ssw0rd
+username network_admin privilege 15 secret P@ssw0rd
+end
+write memory
+
+BR-R:
+enable
+configure terminal
+username admin privilege 15 secret P@ssw0rd
+username branch_admin privilege 15 secret P@ssw0rd
+username network_admin privilege 15 secret P@ssw0rd
+end
+write memory
+Шаг 6: Настройка серверов
+HQ-SRV (Ubuntu Linux):
+bash
+Копировать код
 sudo hostnamectl set-hostname HQ-SRV
-sudo ip addr add 172.18.1.3/24 dev eth0
-sudo ip -6 addr add 2001:db8:1::3/64 dev eth0
+sudo ip addr add 172.18.0.3/26 dev eth0
 sudo ip link set dev eth0 up
-BR-SRV
-На сервере BR-SRV:
+BR-SRV:
+bash
+Копировать код
 sudo hostnamectl set-hostname BR-SRV
-sudo ip addr add 172.18.2.2/28 dev eth0
-sudo ip -6 addr add 2001:db8:2::2/64 dev eth0
+sudo ip addr add 172.18.1.2/28 dev eth0
 sudo ip link set dev eth0 up
-CLI
-На устройстве CLI:
+Шаг 7: Настройка клиента
+CLI:
+bash
+Копировать код
 sudo hostnamectl set-hostname CLI
-sudo ip addr add 172.18.1.2/24 dev eth0
-sudo ip -6 addr add 2001:db8:1::2/64 dev eth0
+sudo ip addr add 172.18.0.2/26 dev eth0
 sudo ip link set dev eth0 up
-ISP
-На устройстве ISP:
+Шаг 8: Настройка шлюза и DNS
+ISP:
+plaintext
+Копировать код
 enable
 configure terminal
 hostname ISP
 interface GigabitEthernet0/0
-ip address 172.18.0.1 255.255.0.0
-ipv6 address 2001:db8::1/64
-no shutdown
+ ip address 172.18.255.254 255.255.255.0
+ no shutdown
+exit
+end
+write memory
+Шаг 9: Конфигурирование устройств в главном офисе
+HQ-CLI:
+bash
+Копировать код
+sudo hostnamectl set-hostname HQ-CLI
+sudo ip addr add 172.18.0.4/26 dev eth0
+sudo ip link set dev eth0 up
+HQ-AD:
+bash
+Копировать код
+sudo hostnamectl set-hostname HQ-AD
+sudo ip addr add 172.18.0.5/26 dev eth0
+sudo ip link set dev eth0 up
+Шаг 10: Настройка VPN для защищенной связи между HQ и BRANCH
+Конфигурация для VPN будет зависеть от используемого протокола (например, IPsec или OpenVPN).
+
+Шаг 11: Конфигурирование файлового сервера и DNS
+Для настроек DNS-сервера и других сервисов, следуйте предыдущим инструкциям, адаптировав IP-адреса согласно новой сетевой конфигурации.
+
+Шаг 12: Настройка контроля доступа по SSH и других сервисов
+Для SSH на HQ-SRV:
+
+bash
+Копировать код
+sudo apt-get update
+sudo apt-get install openssh-server
+sudo sed -i 's/#Port 22/Port 2222/' /etc/ssh/sshd_config
+sudo systemctl restart sshd
+
+HQ-R (перенаправление трафика):
+enable
+configure terminal
+ip nat inside source static tcp 172.18.0.3 2222 interface GigabitEthernet0/0 2222
+end
+write memory
+Контроль доступа по SSH для HQ-SRV
+bash
+Копировать код
+sudo ufw allow from 172.18.0.0/26 to any port 2222
+sudo ufw deny from 172.18.0.2 to any port 2222
+sudo ufw enable
+Эти шаги охватывают основные настройки сети с учетом новых IP-адресов и параметров маски и шлюза. Следующие действия (например, настройка DNS, файлового сервера, мониторинга и прочее) будут выполнены аналогично описанным ранее, с учетом новой адресации.
+
+давай дальше
+ChatGPT
+Конфигурация с IP-адресами в диапазоне 172.18.x.x и маской подсети 255.255.0.0. На данном этапе, мы изменим настройки IP-адресации и шлюза в соответствии с вашим запросом.
+
+Шаг 1: Присвоение имен
+В соответствии с топологией, присвоим имена следующим устройствам:
+
+HQ-R: роутер главного офиса
+HQ-SRV: сервер главного офиса
+BR-R: роутер филиала
+BR-SRV: сервер филиала
+ISP: интернет-провайдер
+CLI: временное подключение для настройки
+HQ-CLI: клиентский компьютер в главном офисе
+HQ-AD: сервер Active Directory в главном офисе
+Шаг 2: Расчет IP-адресации
+IPv4 Адресация:
+
+Для сети офиса HQ:
+Сеть: 172.18.0.0/16
+Маска подсети: 255.255.0.0
+Для сети офиса BRANCH:
+Сеть: 172.18.1.0/16
+Маска подсети: 255.255.0.0
+Заполнение таблицы с IP-адресами
+Имя устройства	IPv4	IPv6
+CLI	172.18.0.2	2001:db8:1::2
+ISP	172.18.255.254	2001:db8::1
+HQ-R	172.18.0.1	2001:db8:1::1
+HQ-SRV	172.18.0.3	2001:db8:1::3
+BR-R	172.18.1.1	2001:db8:2::1
+BR-SRV	172.18.1.2	2001:db8:2::2
+HQ-CLI	172.18.0.4	2001:db8:1::4
+HQ-AD	172.18.0.5	2001:db8:1::5
+Шаг 3: Настройка внутренней динамической маршрутизации
+Для настройки динамической маршрутизации выберем протокол OSPF.
+
+HQ-R
+plaintext
+Копировать код
+enable
+configure terminal
+hostname HQ-R
+interface GigabitEthernet0/0
+ ip address 172.18.0.1 255.255.0.0
+ ipv6 address 2001:db8:1::1/64
+ no shutdown
+exit
+ip dhcp pool HQ_POOL
+ network 172.18.0.0 255.255.0.0
+ default-router 172.18.0.1
+ dns-server 8.8.8.8
+ lease 7
+ip dhcp excluded-address 172.18.0.3
+end
+write memory
+BR-R
+plaintext
+Копировать код
+enable
+configure terminal
+hostname BR-R
+interface GigabitEthernet0/0
+ ip address 172.18.1.1 255.255.0.0
+ ipv6 address 2001:db8:2::1/64
+ no shutdown
+exit
+end
+write memory
+Шаг 4: Настройка серверов и устройств
+HQ-SRV
+bash
+Копировать код
+sudo hostnamectl set-hostname HQ-SRV
+sudo ip addr add 172.18.0.3/16 dev eth0
+sudo ip -6 addr add 2001:db8:1::3/64 dev eth0
+sudo ip link set dev eth0 up
+BR-SRV
+bash
+Копировать код
+sudo hostnamectl set-hostname BR-SRV
+sudo ip addr add 172.18.1.2/16 dev eth0
+sudo ip -6 addr add 2001:db8:2::2/64 dev eth0
+sudo ip link set dev eth0 up
+CLI
+bash
+Копировать код
+sudo hostnamectl set-hostname CLI
+sudo ip addr add 172.18.0.2/16 dev eth0
+sudo ip -6 addr add 2001:db8:1::2/64 dev eth0
+sudo ip link set dev eth0 up
+ISP
+plaintext
+Копировать код
+enable
+configure terminal
+hostname ISP
+interface GigabitEthernet0/0
+ ip address 172.18.255.254 255.255.0.0
+ ipv6 address 2001:db8::1/64
+ no shutdown
 exit
 end
 write memory
 HQ-CLI
-На устройстве HQ-CLI:
+bash
+Копировать код
 sudo hostnamectl set-hostname HQ-CLI
-sudo ip addr add 172.18.1.4/24 dev eth0
+sudo ip addr add 172.18.0.4/16 dev eth0
 sudo ip -6 addr add 2001:db8:1::4/64 dev eth0
 sudo ip link set dev eth0 up
 HQ-AD
-На сервере HQ-AD:
+bash
+Копировать код
 sudo hostnamectl set-hostname HQ-AD
-sudo ip addr add 172.18.1.5/24 dev eth0
+sudo ip addr add 172.18.0.5/16 dev eth0
 sudo ip -6 addr add 2001:db8:1::5/64 dev eth0
 sudo ip link set dev eth0 up
 Настройка внутренней динамической маршрутизации (OSPF)
 HQ-R
+plaintext
+Копировать код
 enable
 configure terminal
 router ospf 1
-network 172.18.1.0 0.0.0.255 area 0
-network 172.18.2.0 0.0.0.15 area 0
+ network 172.18.0.0 0.0.255.255 area 0
+ network 172.18.1.0 0.0.255.255 area 0
 ipv6 router ospf 1
-router-id 1.1.1.1
-exit
+ router-id 1.1.1.1
+ exit
 interface GigabitEthernet0/0
-ip ospf 1 area 0
-ipv6 ospf 1 area 0
+ ip ospf 1 area 0
+ ipv6 ospf 1 area 0
 exit
 end
 write memory
 BR-R
+plaintext
+Копировать код
 enable
 configure terminal
 router ospf 1
-network 172.18.2.0 0.0.0.15 area 0
+ network 172.18.1.0 0.0.255.255 area 0
 ipv6 router ospf 1
-router-id 2.2.2.2
-exit
+ router-id 2.2.2.2
+ exit
 interface GigabitEthernet0/0
-ip ospf 1 area 0
-ipv6 ospf 1 area 0
+ ip ospf 1 area 0
+ ipv6 ospf 1 area 0
 exit
 end
 write memory
 Настройка учетных записей
 HQ-R
+plaintext
+Копировать код
 enable
 configure terminal
 username admin privilege 15 secret P@ssw0rd
@@ -172,6 +333,8 @@ username network_admin privilege 15 secret P@ssw0rd
 end
 write memory
 BR-R
+plaintext
+Копировать код
 enable
 configure terminal
 username admin privilege 15 secret P@ssw0rd
@@ -181,11 +344,19 @@ end
 write memory
 Измерение пропускной способности сети между HQ-R и ISP с помощью iperf3
 Запустим iperf3 на сервере ISP как сервер:
+
+bash
+Копировать код
 iperf3 -s
 Запустим iperf3 на HQ-R как клиент:
-iperf3 -c 172.18.0.1
+
+bash
+Копировать код
+iperf3 -c 172.18.255.254
 Backup скрипты
 HQ-R
+plaintext
+Копировать код
 enable
 configure terminal
 ip ftp username backup_user
@@ -194,6 +365,8 @@ end
 write memory
 copy running-config ftp://backup_user:backup_pass@ftp.server.address/HQ-R-config
 BR-R
+plaintext
+Копировать код
 enable
 configure terminal
 ip ftp username backup_user
@@ -203,345 +376,556 @@ write memory
 copy running-config ftp://backup_user:backup_pass@ftp.server.address/BR-R-config
 Настройка SSH для HQ-SRV по порту 2222
 HQ-SRV
+bash
+Копировать код
 sudo apt-get update
 sudo apt-get install openssh-server
 sudo sed -i 's/#Port 22/Port 2222/' /etc/ssh/sshd_config
 sudo systemctl restart sshd
 HQ-R (перенаправление трафика)
+plaintext
+Копировать код
 enable
 configure terminal
-ip nat inside source static tcp 172.18.1.3 2222 interface GigabitEthernet0/0 2222
+ip nat inside source static tcp 172.18.0.3 2222 interface GigabitEthernet0/0 2222
 end
 write memory
 Контроль доступа по SSH для HQ-SRV
 HQ-SRV (ufw пример)
-sudo ufw allow from 172.18.1.0/24 to any port 2222
-sudo ufw deny from 172.18.1.2 to any port 2222
+bash
+Копировать код
+sudo ufw allow from 172.18.0.0/16 to any port 2222
+sudo ufw deny from 172.18.0.2 to any port 2222
 sudo ufw enable
 Модуль 2: Организация сетевого администрирования
-Настройка DNS-сервера на сервере HQ-SRV
+1. Настройка DNS-сервера на сервере HQ-SRV
 Для настройки DNS-сервера мы будем использовать Bind9 на сервере HQ-SRV.
+
 Установим Bind9:
+bash
+Копировать код
 sudo apt-get update
 sudo apt-get install bind9 bind9utils bind9-doc
 Создадим зоны для hq.work и branch.work:
 Файл конфигурации Bind9 /etc/bind/named.conf.local:
+
+plaintext
+Копировать код
 zone "hq.work" {
-type master;
-file "/etc/bind/zones/db.hq.work";
+    type master;
+    file "/etc/bind/zones/db.hq.work";
 };
-zone "2.18.172.in-addr.arpa" {
-type master;
-file "/etc/bind/zones/db.172.18.2";
-};
+
 zone "branch.work" {
-type master;
-file "/etc/bind/zones/db.branch.work";
+    type master;
+    file "/etc/bind/zones/db.branch.work";
 };
-Создадим зоны и файлы обратной зоны:
+Создадим файлы зон:
+Создадим директорию /etc/bind/zones и файлы зоны:
+
+bash
+Копировать код
+sudo mkdir /etc/bind/zones
 Файл /etc/bind/zones/db.hq.work:
-$TTL 604800
-@ IN SOA ns.hq.work. admin.hq.work. (
-2 ; Serial
-604800 ; Refresh
-86400 ; Retry
-2419200 ; Expire
-604800 ) ; Negative Cache TTL
+
+plaintext
+Копировать код
+$TTL    604800
+@       IN      SOA     ns1.hq.work. admin.hq.work. (
+                        2023060401  ; Serial
+                        604800      ; Refresh
+                        86400       ; Retry
+                        2419200     ; Expire
+                        604800 )    ; Negative Cache TTL
 ;
-@ IN NS ns.hq.work.
-ns IN A 172.18.1.1
-hq-r IN A 172.18.1.1
-hq-srv IN A 172.18.1.3
-Файл /etc/bind/zones/db.172.18.2:
-$TTL 604800
-@ IN SOA ns.hq.work. admin.hq.work. (
-2 ; Serial
-604800 ; Refresh
-86400 ; Retry
-2419200 ; Expire
-604800 ) ; Negative Cache TTL
-;
-@ IN NS ns.
-1 IN PTR hq-r.hq.work.
-3 IN PTR hq-srv.hq.work.
+@       IN      NS      ns1.hq.work.
+@       IN      A       172.18.0.3
+ns1     IN      A       172.18.0.3
 Файл /etc/bind/zones/db.branch.work:
-$TTL 604800
-@ IN SOA ns.branch.work. admin.branch.work. (
-2 ; Serial
-604800 ; Refresh
-86400 ; Retry
-2419200 ; Expire
-604800 ) ; Negative Cache TTL
+
+plaintext
+Копировать код
+$TTL    604800
+@       IN      SOA     ns1.branch.work. admin.branch.work. (
+                        2023060401  ; Serial
+                        604800      ; Refresh
+                        86400       ; Retry
+                        2419200     ; Expire
+                        604800 )    ; Negative Cache TTL
 ;
-@ IN NS ns.branch.work.
-ns IN A 172.18.2.1
-hq-r IN A 172.18.2.1
-hq-srv IN A 172.18.2.2
-Перезагрузим Bind9:
+@       IN      NS      ns1.branch.work.
+@       IN      A       172.18.1.2
+ns1     IN      A       172.18.1.2
+Перезапуск сервиса Bind9:
+
+bash
+Копировать код
 sudo systemctl restart bind9
-Синхронизация времени по протоколу NTP
-HQ-R:
-enable
-configure terminal
-ntp master 5
-interface Loopback0
-ip address 1.1.1.1 255.255.255.255
-exit
-ntp source Loopback0
-end
-write memory
-HQ-SRV и BR-SRV:
-sudo apt-get install ntp
-sudo nano /etc/ntp.conf
-Добавим строку:
-server 172.18.1.1 prefer
-Перезагрузим службу NTP:
-sudo systemctl restart ntp
-Настройка доменного сервера
-Установим и настроим Samba на HQ-SRV для домена Active Directory.
-Установим необходимые пакеты:
-sudo apt-get install samba smbclient
-Настроим конфигурацию Samba /etc/samba/smb.conf:
-[global]
-workgroup = WORKGROUP
-server string = Samba Server %v
-netbios name = hq-srv
-security = user
-map to guest = bad user
-dns proxy = no
-[Branch_Files]
-path = /srv/samba/branch_files
-valid users = @branch_admin
-guest ok = no
-writable = yes
-browsable = yes
-[Network]
-path = /srv/samba/network
-valid users = @network_admin
-guest ok = no
-writable = yes
-browsable = yes
-[Admin_Files]
-path = /srv/samba/admin_files
-valid users = @admin
-guest ok = no
-writable = yes
-browsable = yes
-Создадим директории и установим права доступа:
-sudo mkdir -p /srv/samba/branch_files
-sudo mkdir -p /srv/samba/network
-sudo mkdir -p /srv/samba/admin_files
-sudo chown -R root:branch_admin /srv/samba/branch_files
-sudo chown -R root:network_admin /srv/samba/network
-sudo chown -R root:admin /srv/samba/admin_files
-sudo chmod -R 0770 /srv/samba/branch_files
-sudo chmod -R 0770 /srv/samba/network
-sudo chmod -R 0770 /srv/samba/admin_files
-Создадим пользователей и группы:
-sudo groupadd branch_admin
-sudo groupadd network_admin
-sudo groupadd admin
-sudo useradd -M -s /sbin/nologin -G branch_admin branch_admin
-sudo useradd -M -s /sbin/nologin -G network_admin network_admin
-sudo useradd -M -s /sbin/nologin -G admin admin
-sudo smbpasswd -a branch_admin
-sudo smbpasswd -a network_admin
-sudo smbpasswd -a admin
-Перезапустим службу Samba:
+2. Настройка Active Directory на HQ-AD
+Используем сервер Windows для настройки AD.
+
+Установим роли AD DS:
+Открыть серверный менеджер.
+Добавить роли и компоненты.
+Установить роли "Active Directory Domain Services" и DNS Server.
+Настроим новый лес:
+Открыть "Server Manager".
+Выбрать "AD DS", затем "Promote this server to a domain controller".
+Выбрать "Add a new forest" и ввести домен (например, hq.work).
+Завершить установку.
+3. Настройка файло-хранилища на HQ-SRV
+Для настройки общего доступа используем Samba.
+
+Установим Samba:
+bash
+Копировать код
+sudo apt-get update
+sudo apt-get install samba
+Настроим общий доступ:
+Изменим файл конфигурации Samba /etc/samba/smb.conf:
+
+plaintext
+Копировать код
+[shared]
+   comment = Shared Directory
+   path = /srv/samba/shared
+   browsable = yes
+   read only = no
+   guest ok = yes
+Создадим директорию и назначим права:
+bash
+Копировать код
+sudo mkdir -p /srv/samba/shared
+sudo chown -R nobody:nogroup /srv/samba/shared
+sudo chmod -R 0775 /srv/samba/shared
+Перезапуск Samba:
+bash
+Копировать код
 sudo systemctl restart smbd
-Конфигурация веб-сервера LMS Apache на BR-SRV
-Установим Apache, PHP и MySQL:
-sudo apt-get update
-sudo apt-get install apache2 php libapache2-mod-php php-mysql mysql-server
-Создадим базу данных и пользователя:
-sudo mysql -u root -p
-В MySQL:
-CREATE DATABASE lms_db;
-CREATE USER 'lms_user'@'localhost' IDENTIFIED BY 'P@ssw0rd';
-GRANT ALL PRIVILEGES ON lms_db.* TO 'lms_user'@'localhost';
-FLUSH PRIVILEGES;
-EXIT;
-Настроим Apache:
-sudo nano /etc/apache2/sites-available/lms.conf
-Добавим:
-<VirtualHost *:80>
-ServerAdmin webmaster@localhost
-DocumentRoot /var/www/html/lms
-ErrorLog ${APACHE_LOG_DIR}/error.log
-CustomLog ${APACHE_LOG_DIR}/access.log combined
-</VirtualHost>
-Активируем конфигурацию:
-sudo a2ensite lms.conf
-sudo systemctl reload apache2
-Скачайте и установите LMS (например, Moodle):
-sudo apt-get install git
-sudo git clone git://git.moodle.org/moodle.git /var/www/html/lms
-sudo chown -R www-data:www-data /var/www/html/lms
-Запуск MediaWiki с использованием Docker на HQ-SRV
-Установим Docker и Docker Compose:
-sudo apt-get update
-sudo apt-get install docker.io docker-compose
-Создадим файл wiki.yml:
-nano ~/wiki.yml
-Добавим:
-version: '3'
-services:
-db:
-image: mysql
-restart: always
-environment:
-MYSQL_ROOT_PASSWORD: root_password
-MYSQL_DATABASE: mediawiki
-MYSQL_USER: wiki
-MYSQL_PASSWORD: DEP@ssw0rd
-volumes:
-dbvolume:/var/lib/mysql
-wiki:
-image: mediawiki
-restart: always
-ports:
-"8080:80"
-environment:
-MEDIAWIKI_DB_HOST=db
-MEDIAWIKI_DB_USER=wiki
-MEDIAWIKI_DB_PASSWORD=DEP@ssw0rd
-MEDIAWIKI_DB_NAME=mediawiki
-volumes:
-./LocalSettings.php:/var/www/html/LocalSettings.php
-volumes:
-dbvolume:
-Запустим контейнеры:
-sudo docker-compose -f ~/wiki.yml up -d
-Теперь, MediaWiki доступен по адресу http://<HQ-SRV-IP>:8080.
-Модуль 3: Эксплуатация объектов сетевой инфраструктуры
-Мониторинг с использованием rsyslog на всех Linux хостах
-Настройка rsyslog на HQ-SRV (центральный сервер):
-Установим rsyslog:
-sudo apt-get update
-sudo apt-get install rsyslog
+sudo systemctl enable smbd
+Модуль 3: Контроль и управление сетью
+Настройка мониторинга с использованием Nagios
+Для мониторинга сети установим и настроим Nagios на сервере HQ-SRV.
 
-Откроем конфигурационный файл /etc/rsyslog.conf и добавим строки для приема удаленных логов:
-module(load="imudp")
-input(type="imudp" port="514")
-module(load="imtcp")
-input(type="imtcp" port="514")
-Перезапустим службу rsyslog:
-sudo systemctl restart rsyslog
-Настройка клиентов rsyslog (BR-SRV, HQ-CLI и другие):
-Откроем конфигурационный файл /etc/rsyslog.conf и добавим строку:
-. @HQ-SRV-IP:514
-Перезапустим службу rsyslog:
-sudo systemctl restart rsyslog
-Отчет о работе мониторинга:
-Мониторинг с использованием rsyslog позволяет собирать журналы с удаленных хостов в централизованное место для анализа и аудита. Это упрощает управление логами, улучшает безопасность и позволяет быстро реагировать на инциденты.
-Настройка центра сертификации на HQ-SRV
-Установка и настройка OpenSSL:
-Установим OpenSSL:
+Установим Nagios и необходимые зависимости:
+bash
+Копировать код
 sudo apt-get update
-sudo apt-get install openssl
-Создадим структуру каталогов:
-mkdir -p /etc/ssl/CA/{newcerts,private}
-touch /etc/ssl/CA/index.txt
-echo 1000 > /etc/ssl/CA/serial
-Сгенерируем корневой сертификат:
-openssl req -new -x509 -days 3650 -keyout /etc/ssl/CA/private/ca.key -out /etc/ssl/CA/ca.crt
-Выдача сертификатов для SSH и веб-серверов:
-Создадим запросы на сертификаты и подпишем их:
-Для SSH
-openssl req -new -key /etc/ssh/ssh_host_rsa_key -out /etc/ssl/CA/ssh.csr
-openssl x509 -req -in /etc/ssl/CA/ssh.csr -CA /etc/ssl/CA/ca.crt -CAkey /etc/ssl/CA/private/ca.key -CAcreateserial -out /etc/ssh/ssh_host_rsa_key-cert.pub -days 365
-Для веб-серверов
-openssl req -new -key /etc/ssl/private/apache.key -out /etc/ssl/private/apache.csr
-openssl x509 -req -in /etc/ssl/private/apache.csr -CA /etc/ssl/CA/ca.crt -CAkey /etc/ssl/CA/private/ca.key -CAcreateserial -out /etc/ssl/certs/apache.crt -days 365
-Настройка SSH на всех Linux хостах
-Откроем конфигурационный файл SSH /etc/ssh/sshd_config и внесем изменения:
-Port 2222
-PermitRootLogin no
-PasswordAuthentication no
-MaxAuthTries 4
-PermitEmptyPasswords no
-AuthenticationMethods publickey
-LoginGraceTime 300
-Banner /etc/issue.net
-Настроим баннер:
-echo "Authorized access only!" | sudo tee /etc/issue.net
-Перезапустим службу SSH:
-sudo systemctl restart ssh
-Антивирусная защита с использованием ClamAV
-Установим ClamAV:
-sudo apt-get update
-sudo apt-get install clamav clamav-daemon
-Настроим автоматическое обновление баз:
-sudo freshclamav
-Создадим скрипт для ежедневного сканирования /etc/cron.daily/clamav-scan:
-#!/bin/bash
-clamscan -r / --quiet --infected --log=/var/log/clamav/scan.log
-Установим права на скрипт:
-sudo chmod +x /etc/cron.daily/clamav-scan
-Настройка управления трафиком на роутере BR-R
-Откроем конфигурационный файл маршрутизатора и добавим правила для управления трафиком:
-ip access-list extended ACL_TRAFFIC
-permit tcp any any eq 22
-permit udp any any eq 53
-permit tcp any any eq 80
-permit tcp any any eq 443
-permit icmp any any
-deny ip any any
-Применим ACL к соответствующему интерфейсу:
-interface GigabitEthernet0/1
-ip access-group ACL_TRAFFIC in
-Настройка виртуального принтера с помощью CUPS
-Установим CUPS:
-sudo apt-get update
-sudo apt-get install cups
-Добавим пользователя в группу lpadmin:
-sudo usermod -aG lpadmin $USER
-Откроем веб-интерфейс CUPS и добавим виртуальный принтер:
-sudo lpadmin
-Перезапустим службу CUPS:
-sudo systemctl restart cups
-Установка защищенного туннеля между офисами HQ и BRANCH
-Установим OpenVPN на обоих серверах.
-Настроим конфигурационные файлы для клиента и сервера.
-Запустим и проверим подключение туннеля.
-Настройка мониторинга
-Настроим мониторинг через rsyslog и скрипты для проверки параметров.
-Напишем скрипты для проверки параметров:
-#!/bin/bash
-CPU_LOAD=$(grep 'cpu ' /proc/stat | awk '{usage=($2+$4)*100/($2+$4+$5)} END {print usage "%"}')
-MEM_USAGE=$(free | grep Mem | awk '{print $3/$2 * 100.0 "%"}')
-DISK_USAGE=$(df -h | grep '^/dev' | awk '{print $5}')
-if [[ "$CPU_LOAD" -ge 70 ]]; then
-echo "Warning: CPU load is $CPU_LOAD" | mail -s "CPU Load Warning" admin@example.com
-fi
-if [[ "$MEM_USAGE" -ge 80 ]]; then
-echo "Warning: Memory usage is $MEM_USAGE" | mail -s "Memory Usage Warning" admin@example.com
-fi
-if [[ "$DISK_USAGE" -ge 85 ]]; then
-echo "Warning: Disk usage is $DISK_USAGE" | mail -s "Disk Usage Warning" admin@example.com
-План действий при получении Warning сообщений:
-Уведомление администратора.
-Анализация параметров:
-sudo apt-get update
-sudo apt-get install nagios
-Перезапустим службу:
-sudo systemctl restart nagios
-Настройка программного RAID 5
-Установим mdadm:
-sudo mdadm --create --verbose /dev/md0 --level=5 --raid-devices=3 /dev/sd[bcd]
-Создадим файловой системы на /dev/md0 --level=5 --raid-devices=3 /dev/sd[cde]
-Настройка программного RAID 5:
-sudo mdadm --create --verbose /dev/md0 --level=5 --raid-devices=3 /dev/sd[cde]
-Установка защищенного туннеля:
-sudo apt-get update
-sudo apt-get install bacula-server bacula
-Установка защищенный туннеля:
-sudo apt-get install bind9
-Установка защищенный туннеля:
-sudo apt-get install clamav
-Установка защищенный туннеля:
-sudo apt-get install cups
-Установка защищенный туннеля:
-sudo apt-get install docker.io docker-compose
+sudo apt-get install nagios4 nagios-plugins nagios-nrpe-plugin
+Настроим конфигурацию Nagios для мониторинга устройств:
+Файл конфигурации /etc/nagios4/conf.d/routers.cfg:
 
-остальное см в другой вкладке
+plaintext
+Копировать код
+define host {
+    use                             linux-server
+    host_name                       HQ-R
+    alias                           HQ Router
+    address                         172.18.0.1
+    }
+
+define host {
+    use                             linux-server
+    host_name                       BR-R
+    alias                           Branch Router
+    address                         172.18.1.1
+    }
+Перезапуск Nagios:
+bash
+Копировать код
+sudo systemctl restart nagios4
+Итог
+Теперь, ваши устройства настроены в новой сети с диапазоном 172.18.x.x, включающей новые параметры маски и шлюза. Настроена маршрутизация с использованием OSPF, настроены серверы DNS и файлохранилища, а также мониторинг сети.
+
+Если у вас есть еще вопросы или требуется дополнительная помощь, дайте знать!
+
+Давай дальше
+ChatGPT
+Модуль 3: Контроль и управление сетью (продолжение)
+Настройка мониторинга с использованием Nagios (продолжение)
+Добавление сервисов для мониторинга на роутерах HQ-R и BR-R
+Для настройки мониторинга сервисов на роутерах HQ-R и BR-R, добавим следующие конфигурации в файл /etc/nagios4/conf.d/routers.cfg:
+
+plaintext
+Копировать код
+define service {
+    use                             generic-service
+    host_name                       HQ-R
+    service_description             PING
+    check_command                   check_ping!100.0,20%!500.0,60%
+    }
+
+define service {
+    use                             generic-service
+    host_name                       BR-R
+    service_description             PING
+    check_command                   check_ping!100.0,20%!500.0,60%
+    }
+Перезапуск Nagios:
+bash
+Копировать код
+sudo systemctl restart nagios4
+Модуль 4: Настройка VPN
+Для настройки VPN мы будем использовать OpenVPN для соединения филиалов HQ и BR.
+
+Установка OpenVPN на сервере HQ-SRV и BR-SRV
+Установка OpenVPN:
+На HQ-SRV:
+
+bash
+Копировать код
+sudo apt-get update
+sudo apt-get install openvpn easy-rsa
+На BR-SRV:
+
+bash
+Копировать код
+sudo apt-get update
+sudo apt-get install openvpn easy-rsa
+Настройка сервера OpenVPN на HQ-SRV
+Инициализация PKI и создание ключей:
+bash
+Копировать код
+make-cadir ~/openvpn-ca
+cd ~/openvpn-ca
+source vars
+./clean-all
+./build-ca
+./build-key-server server
+./build-dh
+./build-key client1
+openvpn --genkey --secret keys/ta.key
+Настройка конфигурационного файла сервера /etc/openvpn/server.conf:
+plaintext
+Копировать код
+port 1194
+proto udp
+dev tun
+ca /etc/openvpn/ca.crt
+cert /etc/openvpn/server.crt
+key /etc/openvpn/server.key
+dh /etc/openvpn/dh2048.pem
+server 10.8.0.0 255.255.255.0
+ifconfig-pool-persist ipp.txt
+push "route 172.18.0.0 255.255.0.0"
+keepalive 10 120
+tls-auth /etc/openvpn/ta.key 0
+cipher AES-256-CBC
+persist-key
+persist-tun
+status openvpn-status.log
+log-append  /var/log/openvpn.log
+verb 3
+Копирование ключей и сертификатов в /etc/openvpn:
+bash
+Копировать код
+sudo cp ~/openvpn-ca/keys/{ca.crt,server.crt,server.key,dh2048.pem,ta.key} /etc/openvpn
+Запуск и настройка OpenVPN на автозапуск:
+bash
+Копировать код
+sudo systemctl start openvpn@server
+sudo systemctl enable openvpn@server
+Настройка клиента OpenVPN на BR-SRV
+Копирование ключей и сертификатов клиента на BR-SRV.
+Настройка конфигурационного файла клиента /etc/openvpn/client.conf:
+plaintext
+Копировать код
+client
+dev tun
+proto udp
+remote HQ-SRV_PUBLIC_IP 1194
+resolv-retry infinite
+nobind
+persist-key
+persist-tun
+ca /etc/openvpn/ca.crt
+cert /etc/openvpn/client1.crt
+key /etc/openvpn/client1.key
+tls-auth /etc/openvpn/ta.key 1
+cipher AES-256-CBC
+verb 3
+Запуск и настройка OpenVPN на автозапуск:
+bash
+Копировать код
+sudo systemctl start openvpn@client
+sudo systemctl enable openvpn@client
+Модуль 5: Настройка резервного копирования
+Для настройки резервного копирования будем использовать rsync и cron.
+
+Настройка rsync на HQ-SRV
+Установка rsync:
+bash
+Копировать код
+sudo apt-get update
+sudo apt-get install rsync
+Настройка скрипта резервного копирования /usr/local/bin/backup.sh:
+bash
+Копировать код
+#!/bin/bash
+rsync -av --delete /srv/samba/shared/ backup_user@backup_server:/backup/HQ-SRV/
+Настройка cron для ежедневного резервного копирования:
+bash
+Копировать код
+crontab -e
+Добавьте следующую строку для ежедневного резервного копирования в 2:00:
+
+plaintext
+Копировать код
+0 2 * * * /usr/local/bin/backup.sh
+Модуль 6: Обеспечение безопасности сети
+Настройка файрвола с использованием UFW на HQ-SRV и BR-SRV
+Установка UFW:
+bash
+Копировать код
+sudo apt-get update
+sudo apt-get install ufw
+Разрешение необходимых портов и сервисов:
+bash
+Копировать код
+sudo ufw allow 22/tcp
+sudo ufw allow 2222/tcp
+sudo ufw allow 1194/udp
+sudo ufw allow from 172.18.0.0/16
+sudo ufw enable
+Завершение настройки
+Теперь ваша сеть настроена для функционирования с новым диапазоном IP-адресов, маршрутизацией, динамическим управлением и безопасностью. Включены службы резервного копирования и мониторинга, а также настроена VPN для безопасного соединения между филиалами.
+
+Если есть еще какие-либо задачи или вопросы, дайте знать!
+
+
+2/2
+
+Продолжи писать, ты остановился на Модуль 6: Обеспечение безопасности сети
+Настройка файрвола с использованием UFW на HQ-SRV и BR-SRV
+ChatGPT
+Модуль 6: Обеспечение безопасности сети (продолжение)
+Настройка файрвола с использованием UFW на HQ-SRV и BR-SRV (продолжение)
+Разрешение необходимых портов и сервисов:
+Для обеспечения базовой безопасности, необходимо разрешить только те порты, которые используются для работы сети и сервисов.
+
+На HQ-SRV и BR-SRV выполните следующие команды:
+
+bash
+Копировать код
+sudo ufw allow 22/tcp          # SSH доступ
+sudo ufw allow 2222/tcp        # Альтернативный SSH порт
+sudo ufw allow 1194/udp        # OpenVPN порт
+sudo ufw allow from 172.18.0.0/16  # Разрешить доступ из локальной сети
+sudo ufw allow from 172.19.0.0/16  # Разрешить доступ из сети филиала (BR)
+sudo ufw enable                # Включить UFW
+Проверка состояния UFW:
+bash
+Копировать код
+sudo ufw status verbose
+Модуль 7: Резервное копирование и восстановление
+Настройка резервного копирования с использованием rsync и cron
+Для настройки надежного резервного копирования данных на обоих серверах (HQ-SRV и BR-SRV) используем rsync и cron для автоматизации процесса.
+
+Настройка rsync на BR-SRV
+Установка rsync:
+bash
+Копировать код
+sudo apt-get update
+sudo apt-get install rsync
+Настройка скрипта резервного копирования /usr/local/bin/backup_br.sh:
+bash
+Копировать код
+#!/bin/bash
+rsync -av --delete /srv/samba/shared/ backup_user@backup_server:/backup/BR-SRV/
+Настройка cron для ежедневного резервного копирования:
+bash
+Копировать код
+crontab -e
+Добавьте следующую строку для ежедневного резервного копирования в 3:00:
+
+plaintext
+Копировать код
+0 3 * * * /usr/local/bin/backup_br.sh
+Модуль 8: Централизованное логирование
+Для централизованного логирования используем Logstash, Elasticsearch и Kibana (стек ELK).
+
+Установка и настройка ELK стека на сервере логирования (Log-SRV)
+Установка Elasticsearch:
+bash
+Копировать код
+sudo apt-get update
+sudo apt-get install elasticsearch
+sudo systemctl start elasticsearch
+sudo systemctl enable elasticsearch
+Установка Logstash:
+bash
+Копировать код
+sudo apt-get install logstash
+Установка Kibana:
+bash
+Копировать код
+sudo apt-get install kibana
+sudo systemctl start kibana
+sudo systemctl enable kibana
+Настройка Logstash для приема логов от HQ-SRV и BR-SRV:
+Создайте файл конфигурации Logstash /etc/logstash/conf.d/centralized_logs.conf:
+plaintext
+Копировать код
+input {
+  beats {
+    port => 5044
+  }
+}
+
+filter {
+  if [fileset][module] == "system" {
+    if [fileset][name] == "auth" {
+      grok {
+        match => { "message" => "%{SYSLOGBASE} %{GREEDYDATA:auth_message}" }
+      }
+    } else if [fileset][name] == "syslog" {
+      grok {
+        match => { "message" => "%{SYSLOGBASE} %{GREEDYDATA:syslog_message}" }
+      }
+    }
+  }
+}
+
+output {
+  elasticsearch {
+    hosts => ["localhost:9200"]
+    index => "%{[@metadata][beat]}-%{[@metadata][version]}-%{+YYYY.MM.dd}"
+  }
+}
+Настройка Filebeat на HQ-SRV и BR-SRV для отправки логов на Log-SRV:
+Установка Filebeat:
+bash
+Копировать код
+sudo apt-get install filebeat
+Настройка Filebeat /etc/filebeat/filebeat.yml:
+
+plaintext
+Копировать код
+filebeat.inputs:
+- type: log
+  enabled: true
+  paths:
+    - /var/log/*.log
+
+output.logstash:
+  hosts: ["Log-SRV_IP:5044"]
+Запуск и настройка автозапуска Filebeat:
+
+bash
+Копировать код
+sudo systemctl start filebeat
+sudo systemctl enable filebeat
+Модуль 9: Обучение и документация
+Для обеспечения эффективного использования и поддержки системы, создайте документацию и проведите обучение сотрудников.
+
+Документация
+Общие инструкции по использованию сети:
+
+Как подключаться к сети HQ и BR
+Как использовать VPN для удаленного доступа
+Инструкции по использованию общих ресурсов (файловых серверов, принтеров и т.д.)
+Руководство по администрированию:
+
+Как управлять маршрутизаторами и серверами
+Как добавлять и удалять пользователей
+Как проверять и управлять UFW
+Процедуры резервного копирования и восстановления:
+
+Как запускать резервное копирование вручную
+Как восстанавливать данные из резервной копии
+Процедуры мониторинга и устранения неисправностей:
+
+Как использовать Nagios для мониторинга сети
+Как анализировать и интерпретировать логи с использованием Kibana
+Обучение сотрудников
+Обучение пользователей:
+
+Основы работы в сети (подключение, работа с общими ресурсами)
+Использование VPN для удаленного доступа
+Обучение администраторов:
+
+Глубокие знания настройки и управления маршрутизаторами и серверами
+Управление безопасностью сети и UFW
+Использование инструментов мониторинга и логирования
+Завершение проекта
+После завершения всех настроек и обучения сотрудников, выполните следующие шаги для окончательной проверки и внедрения системы:
+
+Проверка работоспособности:
+
+Убедитесь, что все компоненты сети функционируют корректно.
+Проверьте доступность всех сервисов и ресурсов.
+Тестирование системы резервного копирования:
+
+Выполните тестовое резервное копирование и восстановление данных.
+Тестирование безопасности:
+
+Проведите аудит безопасности сети и исправьте любые обнаруженные уязвимости.
+Введение системы в эксплуатацию:
+
+Информируйте всех пользователей о новых настройках и доступных ресурсах.
+Убедитесь, что все пользователи и администраторы понимают и могут использовать систему эффективно.
+Если у вас возникнут дополнительные вопросы или потребуется дальнейшая помощь, пожалуйста, дайте знать!
+
+продолжи писать ты остановился на Настройка Logstash для приема логов от HQ-SRV и BR-SRV:
+Создайте файл конфигурации Logstash /etc/logstash/conf.d/centralized_logs.conf:
+ChatGPT
+Модуль 8: Централизованное логирование (продолжение)
+Настройка Logstash для приема логов от HQ-SRV и BR-SRV:
+Создайте файл конфигурации Logstash /etc/logstash/conf.d/centralized_logs.conf со следующим содержимым:
+
+plaintext
+Копировать код
+input {
+  beats {
+    port => 5044
+  }
+}
+
+filter {
+  if [fileset][module] == "system" {
+    if [fileset][name] == "auth" {
+      grok {
+        match => { "message" => "%{SYSLOGBASE} %{GREEDYDATA:auth_message}" }
+      }
+    } else if [fileset][name] == "syslog" {
+      grok {
+        match => { "message" => "%{SYSLOGBASE} %{GREEDYDATA:syslog_message}" }
+      }
+    }
+  }
+}
+
+output {
+  elasticsearch {
+    hosts => ["localhost:9200"]
+    index => "%{[@metadata][beat]}-%{[@metadata][version]}-%{+YYYY.MM.dd}"
+  }
+}
+Перезапустите Logstash для применения конфигурации:
+
+bash
+Копировать код
+sudo systemctl restart logstash
+Настройка Filebeat на HQ-SRV и BR-SRV для отправки логов на Log-SRV
+Установка Filebeat:
+bash
+Копировать код
+sudo apt-get install filebeat
+Настройка Filebeat /etc/filebeat/filebeat.yml:
+plaintext
+Копировать код
+filebeat.inputs:
+- type: log
+  enabled: true
+  paths:
+    - /var/log/*.log
+
+output.logstash:
+  hosts: ["Log-SRV_IP:5044"]
+Замените Log-SRV_IP на IP-адрес Log-SRV.
+
+Запуск и настройка автозапуска Filebeat:
+bash
+Копировать код
+sudo systemctl start filebeat
+sudo systemctl enable filebeat
