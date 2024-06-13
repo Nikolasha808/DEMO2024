@@ -1,3 +1,10 @@
+auto ens192
+iface ens192 inet static
+    address 172.18.0.2
+    netmask 255.255.0.0
+    gateway 172.18.255.254
+    dns-nameservers 8.8.8.8
+
 Шаг 1: Присвоение имен устройствам
 Присвоим имена следующим устройствам:
 
