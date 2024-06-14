@@ -1,0 +1,749 @@
+Устройство  ens192  ens224  ens256
+CLI  172.18.10.4/16    
+ISP  172.18.10.1/16  172.18.10.2/16  172.18.10.3/16
+HQ-R  172.18.10.5/16  172.18.20.1/26  
+HQ-SRV  172.18.20.2/26    
+BR-R  172.18.10.6/16  172.18.30.1/28  
+BR-SRV  172.18.30.2/28
+
+Полное выполнение задания с использованием таблицы адресов
+1. Базовая настройка всех устройств
+1.a. Присвоение имен в соответствии с топологией
+# CLI (Windows Server)
+Rename-Computer -NewName "CLI" -Restart
+# ISP (Debian)
+sudo hostnamectl set-hostname ISP
+
+# HQ-R (Debian)
+sudo hostnamectl set-hostname HQ-R
+
+# HQ-SRV (Debian)
+sudo hostnamectl set-hostname HQ-SRV
+
+# BR-R (Debian)
+sudo hostnamectl set-hostname BR-R
+
+# BR-SRV (Debian)
+sudo hostnamectl set-hostname BR-SRV
+1.b. Обновленная IP-адресация и конфигурация интерфейсов
+# CLI (Windows Server)
+New-NetIPAddress -InterfaceAlias "Ethernet0" -IPAddress 172.18.10.4 -PrefixLength 16 -DefaultGateway 172.18.255.254
+Set-DnsClientServerAddress -InterfaceAlias "Ethernet0" -ServerAddresses ("172.18.255.5","172.16.0.249")
+
+# ISP (Debian, 3 интерфейса)
+sudo nano /etc/network/interfaces
+
+# Добавить следующие строки:
+auto ens192
+iface ens192 inet static
+    address 172.18.10.1
+    netmask 255.255.0.0
+
+auto ens224
+iface ens224 inet static
+    address 172.18.10.2
+    netmask 255.255.0.0
+
+auto ens256
+iface ens256 inet static
+    address 172.18.10.3
+    netmask 255.255.0.0
+
+
+# HQ-R (Debian, 2 интерфейса)
+sudo nano /etc/network/interfaces
+
+# Добавить следующие строки:
+auto ens192
+iface ens192 inet static
+    address 172.18.10.5
+    netmask 255.255.0.0
+
+auto ens224
+iface ens224 inet static
+    address 172.18.20.1
+    netmask 255.255.255.192
+
+# HQ-SRV (Debian, 1 интерфейс)
+sudo nano /etc/network/interfaces
+
+# Добавить следующие строки:
+auto ens192
+iface ens192 inet static
+    address 172.18.20.2
+    netmask 255.255.255.192
+
+# BR-R (Debian, 2 интерфейса)
+sudo nano /etc/network/interfaces
+
+# Добавить следующие строки:
+auto ens192
+iface ens192 inet static
+    address 172.18.10.6
+    netmask 255.255.0.0
+
+auto ens224
+iface ens224 inet static
+    address 172.18.30.1
+    netmask 255.255.255.240
+
+# BR-SRV (Debian, 1 интерфейс)
+sudo nano /etc/network/interfaces
+
+# Добавить следующие строки:
+auto ens192
+iface ens192 inet static
+    address 172.18.30.2
+    netmask 255.255.255.240
+
+2. Настройка внутренней динамической маршрутизации с использованием FRR
+Установка FRR на всех роутерах (HQ-R и BR-R)
+sudo apt update
+sudo apt install frr frr-pythontools
+Настройка OSPF на HQ-R
+sudo nano /etc/frr/frr.conf
+
+# Добавить следующие строки:
+frr version 7.5
+frr defaults traditional
+hostname HQ-R
+log syslog informational
+no ipv6 forwarding
+
+router ospf
+ network 172.18.10.0/16 area 0.0.0.0
+ network 172.18.20.0/26 area 0.0.0.0
+
+line vty
+Настройка OSPF на BR-R
+sudo nano /etc/frr/frr.conf
+
+# Добавить следующие строки:
+frr version 7.5
+frr defaults traditional
+hostname BR-R
+log syslog informational
+no ipv6 forwarding
+
+router ospf
+ network 172.18.10.0/16 area 0.0.0.0
+ network 172.18.30.0/28 area 0.0.0.0
+
+line vty
+Запуск FRR на обоих роутерах
+sudo systemctl start frr
+sudo systemctl enable frr
+Проверка OSPF-сессий
+vtysh
+
+show ip ospf neighbor
+Обоснование выбора OSPF
+OSPF (Open Shortest Path First) был выбран из-за его масштабируемости, быстрой конвергенции и поддержки VLSM и CIDR. Эти характеристики делают его идеальным для больших сетей с множеством маршрутизаторов и сложной топологией.
+
+3. Настройка автоматического распределения IP-адресов на роутере HQ-R
+Установка и настройка DHCP-сервера
+sudo apt update
+sudo apt install isc-dhcp-server
+Настройка DHCP
+sudo nano /etc/dhcp/dhcpd.conf
+
+# Добавить следующие строки:
+default-lease-time 600;
+max-lease-time 7200;
+
+subnet 172.18.20.0 netmask 255.255.255.192 {
+ range 172.18.20.10 172.18.20.73;
+ option routers 172.18.20.1;
+ option domain-name-servers 172.18.255.5, 172.16.0.249;
+}
+
+host HQ-SRV {
+ hardware ethernet <MAC-адрес HQ-SRV>;
+ fixed-address 172.18.20.2;
+}
+Запуск и проверка сервера DHCP
+sudo systemctl start isc-dhcp-server
+sudo systemctl enable isc-dhcp-server
+
+sudo journalctl -u isc-dhcp-server
+Обоснование выбора DHCP
+DHCP был выбран для автоматического распределения IP-адресов, так как он значительно упрощает управление сетью, предотвращает конфликты IP-адресов и позволяет быстро изменять конфигурации IP-адресов.
+
+4. Настройка локальных учетных записей
+# CLI (Windows Server)
+net user Admin P@ssw0rd /add
+# ISP (Debian)
+sudo useradd -m -s /bin/bash Admin
+echo "Admin:P@ssw0rd" | sudo chpasswd
+
+# HQ-R (Debian)
+sudo useradd -m -s /bin/bash Admin
+echo "Admin:P@ssw0rd" | sudo chpasswd
+
+sudo useradd -m -s /bin/bash Network_admin
+echo "Network_admin:P@ssw0rd" | sudo chpasswd
+
+# HQ-SRV (Debian)
+sudo useradd -m -s /bin/bash Admin
+echo "Admin:P@ssw0rd" | sudo chpasswd
+
+# BR-R (Debian)
+sudo useradd -m -s /bin/bash Branch_admin
+echo "Branch_admin:P@ssw0rd" | sudo chpasswd
+
+sudo useradd -m -s /bin/bash Network_admin
+echo "Network_admin:P@ssw0rd" | sudo chpasswd
+
+# BR-SRV (Debian)
+sudo useradd -m -s /bin/bash Branch_admin
+echo "Branch_admin:P@ssw0rd" | sudo chpasswd
+
+sudo useradd -m -s /bin/bash Network_admin
+echo "Network_admin:P@ssw0rd" | sudo chpasswd
+5. Измерение пропускной способности сети между HQ-R и ISP с использованием iperf3
+Установка iperf3
+sudo apt update
+sudo apt install iperf3
+Запуск iperf3 на ISP
+iperf3 -s
+Запуск теста на HQ-R
+iperf3 -c 172.18.10.1
+6. Создание резервных скриптов для сохранения конфигурации сетевых устройств (HQ-R и BR-R)
+HQ-R
+sudo nano /usr/local/bin/backup_hq_r.sh
+
+# Добавить следующие строки:
+#!/bin/bash
+DATE=$(date +%F)
+cp /etc/network/interfaces /backup/interfaces_$DATE.bak
+cp /etc/frr/frr.conf /backup/frr_$DATE.conf
+sudo chmod +x /usr/local/bin/backup_hq_r.sh
+
+# Создание директории для резервных копий, если она не существует
+sudo mkdir -p /backup
+
+# Настройка cron для ежедневного выполнения скрипта в 2 часа ночи
+sudo crontab -e
+
+# Добавить следующие строки:
+0 2 * * * /usr/local/bin/backup_hq_r.sh
+BR-R
+sudo nano /usr/local/bin/backup_br_r.sh
+
+# Добавить следующие строки:
+#!/bin/bash
+DATE=$(date +%F)
+cp /etc/network/interfaces /backup/interfaces_$DATE.bak
+cp /etc/frr/frr.conf /backup/frr_$DATE.conf
+sudo chmod +x /usr/local/bin/backup_br_r.sh
+
+# Создание директории для резервных копий, если она не существует
+sudo mkdir -p /backup
+
+# Настройка cron для ежедневного выполнения скрипта в 2:30 утра
+sudo crontab -e
+
+# Добавить следующие строки:
+30 2 * * * /usr/local/bin/backup_br_r.sh
+7. Мониторинг доступности HQ-SRV с использованием ICMP
+Настройка cron на HQ-R для выполнения пинга каждые 5 минут
+sudo crontab -e
+
+# Добавить следующие строки:
+*/5 * * * * ping -c 4 172.18.20.2 > /var/log/ping_hq_srv.log
+8. Установка и настройка syslog для отправки логов на HQ-SRV
+Установка rsyslog на HQ-R и настройка отправки логов на HQ-SRV
+sudo apt update
+sudo apt install rsyslog
+sudo nano /etc/rsyslog.conf
+
+# Добавить или раскомментировать строки для отправки логов на удаленный сервер
+*.* @172.18.20.2:514
+Перезапуск rsyslog для применения изменений
+sudo systemctl restart rsyslog
+Настройка HQ-SRV для приема удаленных логов
+sudo apt update
+sudo apt install rsyslog
+sudo nano /etc/rsyslog.conf
+
+# Добавить или раскомментировать строки для приема удаленных логов
+module(load="imudp")
+input(type="imudp" port="514")
+
+module(load="imtcp")
+input(type="imtcp" port="514")
+
+*.* /var/log/remote.log
+Перезапуск rsyslog на HQ-SRV
+sudo systemctl restart rsyslog
+
+9. Настройка внутренней динамической маршрутизации с использованием FRR
+Для этой задачи выберем протокол OSPF (Open Shortest Path First), так как он хорошо масштабируется, поддерживает VLSM (Variable Length Subnet Masking) и широко используется в корпоративных сетях.
+
+Установка FRR на HQ-R и BR-R
+sudo apt update
+sudo apt install frr frr-pythontools
+Настройка OSPF на HQ-R
+sudo nano /etc/frr/daemons
+
+# Включить OSPF
+ospfd=yes
+sudo nano /etc/frr/frr.conf
+
+# Добавить следующие строки:
+frr version 8.0
+frr defaults traditional
+hostname HQ-R
+log file /var/log/frr/frr.log
+service integrated-vtysh-config
+!
+interface ens192
+ ip ospf area 0.0.0.0
+!
+interface ens224
+ ip ospf area 0.0.0.0
+!
+router ospf
+ ospf router-id 172.18.10.5
+ network 172.18.10.0/16 area 0.0.0.0
+ network 172.18.20.0/26 area 0.0.0.0
+!
+line vty
+Перезапуск FRR для применения изменений
+sudo systemctl restart frr
+Настройка OSPF на BR-R
+sudo nano /etc/frr/daemons
+
+# Включить OSPF
+ospfd=yes
+sudo nano /etc/frr/frr.conf
+
+# Добавить следующие строки:
+frr version 8.0
+frr defaults traditional
+hostname BR-R
+log file /var/log/frr/frr.log
+service integrated-vtysh-config
+!
+interface ens192
+ ip ospf area 0.0.0.0
+!
+interface ens224
+ ip ospf area 0.0.0.0
+!
+router ospf
+ ospf router-id 172.18.10.6
+ network 172.18.10.0/16 area 0.0.0.0
+ network 172.18.30.0/28 area 0.0.0.0
+!
+line vty
+Перезапуск FRR для применения изменений
+sudo systemctl restart frr
+10. Настройка автоматического распределения IP-адресов на роутере HQ-R
+Установка и настройка DHCP сервера
+sudo apt install isc-dhcp-server
+sudo nano /etc/dhcp/dhcpd.conf
+
+# Добавить следующие строки:
+default-lease-time 600;
+max-lease-time 7200;
+subnet 172.18.20.0 netmask 255.255.255.192 {
+ range 172.18.20.3 172.18.20.62;
+ option routers 172.18.20.1;
+ option domain-name-servers 172.18.255.5, 172.16.0.249;
+}
+
+host hq-srv {
+ hardware ethernet <MAC-ADDRESS-HQ-SRV>;
+ fixed-address 172.18.20.2;
+}
+sudo nano /etc/default/isc-dhcp-server
+
+# Добавить или изменить строку:
+INTERFACESv4="ens224"
+Перезапуск DHCP сервера
+sudo systemctl restart isc-dhcp-server
+11. Настройка подключения по SSH для удаленного конфигурирования устройства HQ-SRV по порту 2222
+Настройка SSH на HQ-SRV
+sudo nano /etc/ssh/sshd_config
+
+# Изменить или добавить следующие строки:
+Port 2222
+Перезапуск SSH сервера
+sudo systemctl restart ssh
+12. Настройка контроля доступа до HQ-SRV по SSH со всех устройств, кроме CLI
+Настройка iptables на HQ-SRV
+sudo iptables -A INPUT -p tcp --dport 2222 -s 172.18.10.4 -j DROP
+sudo iptables -A INPUT -p tcp --dport 2222 -j ACCEPT
+sudo iptables -A INPUT -p tcp --dport 2222 -j REJECT
+Сохранение правил iptables
+sudo apt install iptables-persistent
+sudo netfilter-persistent save
+
+Модуль 2: Организация сетевого администрирования
+Задание 1 модуля 2
+1. Настройка DNS-сервера на сервере HQ-SRV
+Установка и настройка BIND
+sudo apt update
+sudo apt install bind9
+Конфигурация зоны hq.work
+sudo nano /etc/bind/named.conf.local
+
+# Добавить следующие строки:
+zone "hq.work" {
+    type master;
+    file "/etc/bind/db.hq.work";
+};
+
+zone "20.18.172.in-addr.arpa" {
+    type master;
+    file "/etc/bind/db.172.18.20";
+};
+sudo nano /etc/bind/db.hq.work
+
+# Добавить следующие строки:
+$TTL    604800
+@       IN      SOA     hq-srv.hq.work. root.hq.work. (
+                              2         ; Serial
+                         604800         ; Refresh
+                          86400         ; Retry
+                        2419200         ; Expire
+                         604800 )       ; Negative Cache TTL
+;
+@       IN      NS      hq-srv.hq.work.
+hq-r    IN      A       172.18.10.5
+hq-srv  IN      A       172.18.20.2
+sudo nano /etc/bind/db.172.18.20
+
+# Добавить следующие строки:
+$TTL    604800
+@       IN      SOA     hq-srv.hq.work. root.hq.work. (
+                              2         ; Serial
+                         604800         ; Refresh
+                          86400         ; Retry
+                        2419200         ; Expire
+                         604800 )       ; Negative Cache TTL
+;
+@       IN      NS      hq-srv.hq.work.
+2       IN      PTR     hq-srv.hq.work.
+Конфигурация зоны branch.work
+sudo nano /etc/bind/named.conf.local
+
+# Добавить следующие строки:
+zone "branch.work" {
+    type master;
+    file "/etc/bind/db.branch.work";
+};
+
+zone "30.18.172.in-addr.arpa" {
+    type master;
+    file "/etc/bind/db.172.18.30";
+};
+sudo nano /etc/bind/db.branch.work
+
+# Добавить следующие строки:
+$TTL    604800
+@       IN      SOA     br-srv.branch.work. root.branch.work. (
+                              2         ; Serial
+                         604800         ; Refresh
+                          86400         ; Retry
+                        2419200         ; Expire
+                         604800 )       ; Negative Cache TTL
+;
+@       IN      NS      br-srv.branch.work.
+br-r    IN      A       172.18.10.6
+br-srv  IN      A       172.18.30.2
+sudo nano /etc/bind/db.172.18.30
+
+# Добавить следующие строки:
+$TTL    604800
+@       IN      SOA     br-srv.branch.work. root.branch.work. (
+                              2         ; Serial
+                         604800         ; Refresh
+                          86400         ; Retry
+                        2419200         ; Expire
+                         604800 )       ; Negative Cache TTL
+;
+@       IN      NS      br-srv.branch.work.
+2       IN      PTR     br-srv.branch.work.
+Перезапуск BIND для применения изменений
+sudo systemctl restart bind9
+
+2. Настройка синхронизации времени между сетевыми устройствами по протоколу NTP
+Установка и настройка NTP на HQ-R
+sudo apt install ntp
+sudo nano /etc/ntp.conf
+
+# Добавить или изменить строки:
+server 127.127.1.0     # local clock
+fudge  127.127.1.0 stratum 5
+
+interface listen ens192
+interface listen ens224
+Перезапуск NTP
+sudo systemctl restart ntp
+Настройка остальных устройств для синхронизации времени с HQ-R
+sudo apt install ntp
+sudo nano /etc/ntp.conf
+
+# Добавить или изменить строки:
+server 172.18.10.5
+Перезапуск NTP на всех устройствах
+sudo systemctl restart ntp
+
+3. Настройка сервера домена
+Для выполнения этой задачи на базе HQ-SRV будем использовать Samba AD DC. Эта технология обеспечивает функциональность контроллера домена и совместима с Windows Active Directory, что позволяет использовать один домен для управления пользователями и устройствами.
+
+Установка и настройка Samba AD DC на HQ-SRV
+sudo apt install samba smbclient krb5-config winbind
+sudo nano /etc/krb5.conf
+
+# Добавить или изменить строки:
+[libdefaults]
+    default_realm = HQ.WORK
+
+[realms]
+    HQ.WORK = {
+        kdc = hq-srv.hq.work
+        admin_server = hq-srv.hq.work
+    }
+
+[domain_realm]
+    .hq.work = HQ.WORK
+    hq.work = HQ.WORK
+Инициализация Samba AD DC
+sudo samba-tool domain provision --use-rfc2307 --interactive
+
+# Ответы на вопросы:
+Realm: HQ.WORK
+Domain: HQ
+Server Role: dc
+DNS backend: BIND9_DLZ
+Administrator password: <your_password>
+Настройка Samba для работы с BIND9_DLZ
+sudo nano /etc/samba/smb.conf
+
+# Убедитесь, что добавлены следующие строки:
+[global]
+    dns forwarder = 172.18.255.5
+    realm = HQ.WORK
+    workgroup = HQ
+    security = ADS
+    idmap_ldb:use rfc2307 = yes
+Настройка BIND для работы с Samba
+sudo nano /etc/bind/named.conf.options
+
+# Добавить или изменить строки:
+tkey-gssapi-keytab "/var/lib/samba/private/dns.keytab";
+sudo nano /etc/bind/named.conf.local
+
+# Добавить или изменить строки:
+include "/var/lib/samba/bind-dns/named.conf";
+Перезапуск BIND и Samba
+sudo systemctl restart bind9
+sudo systemctl restart samba-ad-dc
+Введение машин BR-SRV и CLI в домен
+На BR-SRV:
+sudo apt install realmd sssd
+sudo realm join HQ.WORK -U Administrator
+На CLI (Windows Server):
+Add-Computer -DomainName "HQ.WORK" -Credential HQ\Administrator
+Restart-Computer
+4. Реализация файлового SMB сервера на базе HQ-SRV
+Настройка общих папок
+sudo nano /etc/samba/smb.conf
+
+# Добавить следующие строки:
+[Branch_Files]
+    path = /srv/samba/branch_files
+    read only = no
+    browsable = yes
+    valid users = Branch_admin
+
+[Network]
+    path = /srv/samba/network
+    read only = no
+    browsable = yes
+    valid users = Network_admin
+
+[Admin_Files]
+    path = /srv/samba/admin_files
+    read only = no
+    browsable = yes
+    valid users = Admin
+Создание директорий и назначение прав
+sudo mkdir -p /srv/samba/branch_files /srv/samba/network /srv/samba/admin_files
+sudo chown -R Branch_admin:"Domain Admins" /srv/samba/branch_files
+sudo chown -R Network_admin:"Domain Admins" /srv/samba/network
+sudo chown -R Admin:"Domain Admins" /srv/samba/admin_files
+Перезапуск Samba
+sudo systemctl restart smbd
+sudo systemctl restart nmbd
+Настройка автоматического монтирования на клиентских машинах
+sudo nano /etc/fstab
+
+# Добавить следующие строки:
+//hq-srv/Branch_Files /mnt/Branch_Files cifs credentials=/etc/samba/creds,uid=1000,gid=1000 0 0
+//hq-srv/Network /mnt/Network cifs credentials=/etc/samba/creds,uid=1000,gid=1000 0 0
+//hq-srv/Admin_Files /mnt/Admin_Files cifs credentials=/etc/samba/creds,uid=1000,gid=1000 0 0
+Создание файла с учетными данными для монтирования
+sudo nano /etc/samba/creds
+
+# Добавить следующие строки:
+username=<your_username>
+password=<your_password>
+sudo chmod 600 /etc/samba/creds
+Монтирование директорий
+sudo mount -a
+
+Сконфигурировать веб-сервер LMS Apache на сервере BR-SRV
+Установка Apache и MySQL
+sudo apt update
+sudo apt install apache2 mysql-server php libapache2-mod-php php-mysql
+Настройка Apache для работы с LMS
+sudo nano /etc/apache2/sites-available/lms.conf
+
+# Добавить следующие строки:
+<VirtualHost *:80>
+    ServerAdmin webmaster@branch.work
+    DocumentRoot /var/www/lms
+    ServerName lms.branch.work
+
+    <Directory /var/www/lms/>
+        Options Indexes FollowSymLinks
+        AllowOverride All
+        Require all granted
+    </Directory>
+
+    ErrorLog ${APACHE_LOG_DIR}/error.log
+    CustomLog ${APACHE_LOG_DIR}/access.log combined
+</VirtualHost>
+Активация сайта и перезапуск Apache
+sudo a2ensite lms.conf
+sudo systemctl restart apache2
+Настройка MySQL
+sudo mysql_secure_installation
+
+# Следуйте инструкциям для настройки безопасности.
+Создание базы данных для LMS
+sudo mysql -u root -p
+
+CREATE DATABASE lms;
+CREATE USER 'lmsuser'@'localhost' IDENTIFIED BY 'password';
+GRANT ALL PRIVILEGES ON lms.* TO 'lmsuser'@'localhost';
+FLUSH PRIVILEGES;
+EXIT;
+
+6. Запустите сервис MediaWiki, используя Docker на сервере HQ-SRV
+Установка Docker и Docker Compose
+sudo apt update
+sudo apt install docker.io docker-compose
+sudo systemctl start docker
+sudo systemctl enable docker
+Создание файла wiki.yml для MediaWiki
+nano ~/wiki.yml
+
+# Добавить следующие строки:
+version: '3.1'
+
+services:
+  db:
+    image: mysql:5.7
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: DEP@ssw0rd
+      MYSQL_DATABASE: mediawiki
+      MYSQL_USER: wiki
+      MYSQL_PASSWORD: DEP@ssw0rd
+    volumes:
+      - dbvolume:/var/lib/mysql
+
+  wiki:
+    image: mediawiki
+    restart: always
+    ports:
+      - 8080:80
+    environment:
+      MEDIAWIKI_DB_HOST: db
+      MEDIAWIKI_DB_NAME: mediawiki
+      MEDIAWIKI_DB_USER: wiki
+      MEDIAWIKI_DB_PASSWORD: DEP@ssw0rd
+    volumes:
+      - ./LocalSettings.php:/var/www/html/LocalSettings.php
+
+volumes:
+  dbvolume:
+Создание файла LocalSettings.php
+nano ~/LocalSettings.php
+
+# Добавить следующие строки:
+<?php
+# This file was automatically generated by the MediaWiki 1.35.0
+# installer. If you make manual changes, please keep track in case you
+# need to recreate them later.
+
+$wgSitename = "MyWiki";
+$wgMetaNamespace = "MyWiki";
+
+## The protocol and server name to use in fully-qualified URLs
+$wgServer = "http://localhost:8080";
+
+## The URL path to the directory containing the wiki;
+## defaults for all runtime URL paths are based off of this.
+$wgScriptPath = "";
+
+## The URL path to static resources (images, scripts, etc.)
+$wgResourceBasePath = $wgScriptPath;
+
+## The name of the database. If you have multiple wikis installed
+## on one server, you will need to set this to the name of the database
+## used by this wiki. This must be the same as $wgDBname in
+## the database settings below.
+$wgDBname = "mediawiki";
+
+## The database host to use. If this is a Unix socket, prepend
+## the string "localhost:" (to distinguish from a real hostname).
+$wgDBserver = "db";
+
+## Database credentials.
+$wgDBuser = "wiki";
+$wgDBpassword = "DEP@ssw0rd";
+
+$wgDBtype = "mysql";
+
+# End of automatically generated settings.
+Запуск Docker Compose
+docker-compose -f ~/wiki.yml up -d
+
+7. Составьте backup скрипты для сохранения конфигурации сетевых устройств, а именно HQ-R и BR-R. Продемонстрируйте их работу.
+Создание скриптов для резервного копирования
+
+Для HQ-R
+nano /usr/local/bin/backup_hq_r.sh
+
+# Добавить следующие строки:
+#!/bin/bash
+BACKUP_DIR=/backup/hq_r
+mkdir -p $BACKUP_DIR
+cp /etc/frr/frr.conf $BACKUP_DIR/frr.conf.$(date +%F)
+Для BR-R
+nano /usr/local/bin/backup_br_r.sh
+
+# Добавить следующие строки:
+#!/bin/bash
+BACKUP_DIR=/backup/br_r
+mkdir -p $BACKUP_DIR
+cp /etc/frr/frr.conf $BACKUP_DIR/frr.conf.$(date +%F)
+Добавление прав на выполнение скриптов
+chmod +x /usr/local/bin/backup_hq_r.sh
+chmod +x /usr/local/bin/backup_br_r.sh
+Создание cron job для автоматического выполнения резервного копирования
+crontab -e
+
+# Добавить следующие строки:
+0 2 * * * /usr/local/bin/backup_hq_r.sh
+0 2 * * * /usr/local/bin/backup_br_r.sh
+Проверка работы скриптов
+sudo /usr/local/bin/backup_hq_r.sh
+sudo /usr/local/bin/backup_br_r.sh
+
